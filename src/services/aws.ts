@@ -129,10 +129,11 @@ export const discoverAwsBuckets = async (keywords: string[] = []): Promise<FindO
     } catch (error: any) {
         // Handle cases where credentials might be missing or invalid.
         if (error.name === 'CredentialsProviderError') {
-             throw new Error("AWS credentials not found. Please configure your environment for AWS access.");
+             console.warn("AWS credentials not found. Skipping authenticated scan. To scan buckets you own, please configure your environment for AWS access.");
+        } else {
+            console.error("Failed to list AWS buckets:", error);
+            // Don't re-throw, allow the discovery scan to proceed.
         }
-        console.error("Failed to list AWS buckets:", error);
-        throw new Error("Could not connect to AWS to list buckets. Please ensure your credentials and permissions are configured correctly.");
     }
     
     // Step 2: Discover public buckets using keyword permutations.
