@@ -69,7 +69,6 @@ const findOpenBucketsFlow = ai.defineFlow(
   }
 );
 
-export async function findOpenBuckets(input: FindOpenBucketsInput): Promise<Stream<ScanUpdate>> {
-  const {stream} = await findOpenBucketsFlow(input);
-  return stream;
+export async function findOpenBuckets(input: FindOpenBucketsInput) {
+  return findOpenBucketsFlow(input);
 }

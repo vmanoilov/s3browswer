@@ -59,7 +59,7 @@ export default function DashboardPage() {
     setIsLogOpen(true);
 
     try {
-      const stream = await findOpenBuckets({
+      const { stream, response } = findOpenBuckets({
         providers: selectedProviders,
         keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
       });
@@ -72,6 +72,8 @@ export default function DashboardPage() {
           setFoundBuckets(prev => [...prev, update.bucket]);
         }
       }
+      
+      await response;
 
     } catch (error) {
       console.error("Failed to scan for open buckets:", error);
