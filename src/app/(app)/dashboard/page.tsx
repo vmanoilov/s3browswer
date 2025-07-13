@@ -131,7 +131,7 @@ export default function DashboardPage() {
         <CardHeader>
             <CardTitle>Recent Activity</CardTitle>
             <CardDescription>A summary of recent scan activities.</CardDescription>
-        </Header>
+        </CardHeader>
         <CardContent>
             <p className="text-muted-foreground">No recent scans to display. Start a new scan to see results here.</p>
         </CardContent>
