@@ -1,5 +1,6 @@
 import { S3Client, ListBucketsCommand, GetBucketAclCommand, GetPublicAccessBlockCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
-import type { FindOpenBucketsOutput, BucketInfo } from '@/ai/flows/find-open-buckets';
+import type { ScanUpdate } from '@/ai/flows/find-open-buckets';
+import type { Stream } from 'genkit/stream';
 
 // Note on Credentials: This service uses the AWS SDK, which will automatically
 // use credentials from environment variables (AWS_ACCESS_KEY_ID, etc.),
@@ -54,18 +55,22 @@ const generateBucketPermutations = (keywords: string[]): string[] => {
 
 
 // Scans a specific, named bucket to determine its public status
-const scanBucket = async (bucketName: string, source: 'Authenticated' | 'Discovered'): Promise<BucketInfo | null> => {
+const scanBucket = async (bucketName: string, source: 'Authenticated' | 'Discovered', stream: Stream<ScanUpdate>): Promise<void> => {
      try {
         // 1. Check Bucket ACL
         const { Grants } = await s3Client.send(new GetBucketAclCommand({ Bucket: bucketName }));
         if (Grants) {
             const { public: isPublic, details } = isBucketPublicByAcl(Grants);
             if (isPublic) {
-                return {
-                    id: `aws-${bucketName}`, name: bucketName, status: 'Vulnerable', provider: 'AWS',
-                    region: 'N/A', // Region requires another call, omitted for performance
-                    details: `Vulnerable due to bucket ACLs allowing public access. ${details.join(' ')} (Source: ${source})`
-                };
+                stream.yield({
+                    type: 'result',
+                    bucket: {
+                        id: `aws-${bucketName}`, name: bucketName, status: 'Vulnerable', provider: 'AWS',
+                        region: 'N/A', // Region requires another call, omitted for performance
+                        details: `Vulnerable due to bucket ACLs allowing public access. ${details.join(' ')} (Source: ${source})`
+                    }
+                });
+                return;
             }
         }
 
@@ -81,19 +86,26 @@ const scanBucket = async (bucketName: string, source: 'Authenticated' | 'Discove
                 ))
                 {
                 // This bucket is explicitly configured to be private and secure. We can skip it.
-                return null;
+                return;
                 } else {
-                    return {
-                        id: `aws-${bucketName}`, name: bucketName, status: 'Vulnerable', provider: 'AWS', region: 'N/A', 
-                        details: `Public Access Block is not fully enabled, which is a misconfiguration that could expose the bucket. (Source: ${source})`
-                    };
+                     stream.yield({
+                        type: 'result',
+                        bucket: {
+                            id: `aws-${bucketName}`, name: bucketName, status: 'Vulnerable', provider: 'AWS', region: 'N/A', 
+                            details: `Public Access Block is not fully enabled, which is a misconfiguration that could expose the bucket. (Source: ${source})`
+                        }
+                    });
                 }
         } catch(e: any) {
             if (e.name === 'NoSuchPublicAccessBlockConfiguration') {
-                return {
-                    id: `aws-${bucketName}`, name: bucketName, status: 'Public', provider: 'AWS', region: 'N/A', 
-                    details: `No Public Access Block configuration found. Bucket is potentially public and should be manually verified. (Source: ${source})`
-                };
+                stream.yield({
+                    type: 'result',
+                    bucket: {
+                        id: `aws-${bucketName}`, name: bucketName, status: 'Public', provider: 'AWS', region: 'N/A', 
+                        details: `No Public Access Block configuration found. Bucket is potentially public and should be manually verified. (Source: ${source})`
+                    }
+                });
+                return;
             }
             // Re-throw other errors
             throw e;
@@ -102,36 +114,38 @@ const scanBucket = async (bucketName: string, source: 'Authenticated' | 'Discove
     } catch (error: any) {
         if (error.name === 'NoSuchBucket' || error.name === 'AccessDenied') {
             // This is an expected error for discovered buckets we don't own or have access to.
-            return null;
+            return;
         }
-        console.error(`Could not fully check bucket ${bucketName}:`, error);
-        return null; // Return null to indicate we couldn't determine status or it's not actionable.
+        stream.log(`Could not fully check bucket ${bucketName}: ${error.message || error.name}`);
+        return; 
     }
 }
 
 // Main function to discover open buckets in an AWS environment.
-export const discoverAwsBuckets = async (keywords: string[] = []): Promise<FindOpenBucketsOutput> => {
-    const results: BucketInfo[] = [];
+export const discoverAwsBuckets = async (keywords: string[] = [], stream: Stream<ScanUpdate>): Promise<void> => {
     const scannedNames = new Set<string>();
+
+    stream.log('Starting AWS Scan...');
 
     // Step 1: Scan buckets from the authenticated user's account.
     // This finds misconfigurations in buckets you own.
     try {
+        stream.log('Checking for AWS credentials to scan owned buckets...');
         const { Buckets } = await s3Client.send(new ListBucketsCommand({}));
         if (Buckets) {
+            stream.log(`Found ${Buckets.length} buckets in your account. Analyzing...`);
             for (const bucket of Buckets) {
                 if (!bucket.Name || scannedNames.has(bucket.Name)) continue;
                 scannedNames.add(bucket.Name);
-                const result = await scanBucket(bucket.Name, 'Authenticated');
-                if (result) results.push(result);
+                await scanBucket(bucket.Name, 'Authenticated', stream);
             }
         }
     } catch (error: any) {
         // Handle cases where credentials might be missing or invalid.
         if (error.name === 'CredentialsProviderError') {
-             console.warn("AWS credentials not found. Skipping authenticated scan. To scan buckets you own, please configure your environment for AWS access.");
+             stream.log("AWS credentials not found. Skipping authenticated scan. To scan buckets you own, please configure your environment for AWS access.");
         } else {
-            console.error("Failed to list AWS buckets:", error);
+            stream.log(`Failed to list AWS buckets: ${error.message || error.name}`);
             // Don't re-throw, allow the discovery scan to proceed.
         }
     }
@@ -139,7 +153,10 @@ export const discoverAwsBuckets = async (keywords: string[] = []): Promise<FindO
     // Step 2: Discover public buckets using keyword permutations.
     // This finds "shadow IT" or unknown public buckets by guessing common names.
     if (keywords.length > 0) {
+        stream.log(`Generating and testing bucket names from ${keywords.length} keywords...`);
         const potentialBuckets = generateBucketPermutations(keywords);
+        stream.log(`Generated ${potentialBuckets.length} potential names. Starting discovery...`);
+        
         for(const bucketName of potentialBuckets) {
             if (scannedNames.has(bucketName)) continue;
             scannedNames.add(bucketName);
@@ -147,11 +164,11 @@ export const discoverAwsBuckets = async (keywords: string[] = []): Promise<FindO
                 // A HEAD request is a cheap way to see if a bucket exists at all.
                 // It doesn't require list permissions.
                 await s3Client.send(new HeadBucketCommand({ Bucket: bucketName }));
+                stream.log(`Potential bucket found: ${bucketName}. Analyzing access...`);
 
                 // If HeadBucket succeeds, the bucket exists. Now we can run our detailed scan
                 // to check if it's actually public.
-                const result = await scanBucket(bucketName, 'Discovered');
-                if (result) results.push(result);
+                await scanBucket(bucketName, 'Discovered', stream);
             } catch(error: any) {
                 // 'NotFound' (404) or 'Forbidden' (403) are the expected errors for
                 // bucket names that don't exist or are private. We can safely ignore these.
@@ -159,10 +176,12 @@ export const discoverAwsBuckets = async (keywords: string[] = []): Promise<FindO
                    continue;
                 }
                  // Log other, unexpected errors.
-                 console.error(`Error during discovery for bucket ${bucketName}:`, error);
+                 stream.log(`Error during discovery for bucket ${bucketName}: ${error.message || error.name}`);
             }
         }
+    } else {
+        stream.log('No keywords provided. Skipping public discovery phase.');
     }
 
-    return { buckets: results };
+    stream.log('AWS Scan finished.');
 };

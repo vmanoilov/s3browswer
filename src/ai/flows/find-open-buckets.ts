@@ -9,40 +9,29 @@
  */
 
 import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
 import { discoverAwsBuckets } from '@/services/aws';
-
-
-const BucketInfoSchema = z.object({
-  id: z.string().describe('A unique identifier for the bucket scan result.'),
-  name: z.string().describe('The name of the storage resource.'),
-  status: z.enum(['Secure', 'Public', 'Vulnerable']).describe('The security status of the bucket.'),
-  provider: z.string().describe('The cloud provider where the resource is located.'),
-  details: z.string().describe('A description of the bucket configuration and/or vulnerability.'),
-  region: z.string().describe('The region where the resource is located.'),
-});
-export type BucketInfo = z.infer<typeof BucketInfoSchema>;
-
-const FindOpenBucketsInputSchema = z.object({
-  providers: z.array(z.string()).describe('The cloud providers to scan. e.g., AWS, GCP, DigitalOcean.'),
-  keywords: z.array(z.string()).optional().describe('Optional list of keywords to generate and test potential bucket names.'),
-});
-export type FindOpenBucketsInput = z.infer<typeof FindOpenBucketsInputSchema>;
-
-const FindOpenBucketsOutputSchema = z.object({
-  buckets: z.array(BucketInfoSchema).describe('A list of storage resources with their configuration details.'),
-});
-export type FindOpenBucketsOutput = z.infer<typeof FindOpenBucketsOutputSchema>;
+import { Stream } from 'genkit/stream';
+import {
+  FindOpenBucketsInputSchema,
+  FindOpenBucketsOutputSchema,
+  ScanUpdateSchema,
+  type FindOpenBucketsInput,
+  type ScanUpdate
+} from './schemas';
 
 
 // This function orchestrates which discovery process to run based on the provider.
-const performDiscovery = async (provider: string, keywords?: string[]): Promise<BucketInfo[]> => {
+const performDiscovery = async (
+    provider: string,
+    keywords: string[] | undefined,
+    stream: Stream<ScanUpdate>
+  ) => {
   const providerKey = provider.toLowerCase().replace(/\s/g, '');
 
   switch(providerKey) {
       case 'aws':
-        const awsResult = await discoverAwsBuckets(keywords);
-        return awsResult.buckets;
+        await discoverAwsBuckets(keywords, stream);
+        break;
       // NOTE: You would add cases for other providers here by creating new service files.
       // e.g., import { discoverGcpBuckets } from '@/services/gcp';
       case 'gcp':
@@ -52,11 +41,11 @@ const performDiscovery = async (provider: string, keywords?: string[]): Promise<
       case 'scaleway':
       case 'custom':
          // Placeholder for other providers
-         console.warn(`Scanning for provider '${provider}' is not yet implemented.`);
-         return [];
+         stream.log(`Scanning for provider '${provider}' is not yet implemented.`);
+         break;
       default:
-        console.error(`Unknown provider: ${provider}`);
-        return [];
+        stream.log(`Unknown provider: ${provider}`);
+        break;
   }
 };
 
@@ -66,21 +55,21 @@ const findOpenBucketsFlow = ai.defineFlow(
     name: 'findOpenBucketsFlow',
     inputSchema: FindOpenBucketsInputSchema,
     outputSchema: FindOpenBucketsOutputSchema,
+    streamSchema: ScanUpdateSchema,
   },
-  async ({ providers, keywords }) => {
-    const allBuckets: BucketInfo[] = [];
-
-    const discoveryPromises = providers.map(provider => performDiscovery(provider, keywords));
-    const results = await Promise.all(discoveryPromises);
+  async ({ providers, keywords }, stream) => {
     
-    results.forEach(buckets => {
-      allBuckets.push(...buckets);
-    });
+    stream.log(`Starting scan for ${providers.join(', ')}...`);
 
-    return { buckets: allBuckets };
+    const discoveryPromises = providers.map(provider => performDiscovery(provider, keywords, stream));
+    await Promise.all(discoveryPromises);
+
+    stream.log('Scan completed.');
+    return [];
   }
 );
 
-export async function findOpenBuckets(input: FindOpenBucketsInput): Promise<FindOpenBucketsOutput> {
-  return findOpenBucketsFlow(input);
+export async function findOpenBuckets(input: FindOpenBucketsInput): Promise<Stream<ScanUpdate>> {
+  const {stream} = await findOpenBucketsFlow(input);
+  return stream;
 }
