@@ -24,7 +24,7 @@ const BucketInfoSchema = z.object({
 export type BucketInfo = z.infer<typeof BucketInfoSchema>;
 
 const FindOpenBucketsInputSchema = z.object({
-  provider: z.string().describe('The cloud provider to scan. e.g., AWS, GCP, DigitalOcean.'),
+  providers: z.array(z.string()).describe('The cloud providers to scan. e.g., AWS, GCP, DigitalOcean.'),
   keywords: z.array(z.string()).optional().describe('Optional list of keywords to generate and test potential bucket names.'),
 });
 export type FindOpenBucketsInput = z.infer<typeof FindOpenBucketsInputSchema>;
@@ -36,12 +36,13 @@ export type FindOpenBucketsOutput = z.infer<typeof FindOpenBucketsOutputSchema>;
 
 
 // This function orchestrates which discovery process to run based on the provider.
-const performDiscovery = async (provider: string, keywords?: string[]): Promise<FindOpenBucketsOutput> => {
+const performDiscovery = async (provider: string, keywords?: string[]): Promise<BucketInfo[]> => {
   const providerKey = provider.toLowerCase().replace(/\s/g, '');
 
   switch(providerKey) {
       case 'aws':
-        return await discoverAwsBuckets(keywords);
+        const awsResult = await discoverAwsBuckets(keywords);
+        return awsResult.buckets;
       // NOTE: You would add cases for other providers here by creating new service files.
       // e.g., import { discoverGcpBuckets } from '@/services/gcp';
       case 'gcp':
@@ -52,10 +53,10 @@ const performDiscovery = async (provider: string, keywords?: string[]): Promise<
       case 'custom':
          // Placeholder for other providers
          console.warn(`Scanning for provider '${provider}' is not yet implemented.`);
-         return { buckets: [] };
+         return [];
       default:
         console.error(`Unknown provider: ${provider}`);
-        return { buckets: [] };
+        return [];
   }
 };
 
@@ -66,8 +67,17 @@ const findOpenBucketsFlow = ai.defineFlow(
     inputSchema: FindOpenBucketsInputSchema,
     outputSchema: FindOpenBucketsOutputSchema,
   },
-  async ({ provider, keywords }) => {
-    return performDiscovery(provider, keywords);
+  async ({ providers, keywords }) => {
+    const allBuckets: BucketInfo[] = [];
+
+    const discoveryPromises = providers.map(provider => performDiscovery(provider, keywords));
+    const results = await Promise.all(discoveryPromises);
+    
+    results.forEach(buckets => {
+      allBuckets.push(...buckets);
+    });
+
+    return { buckets: allBuckets };
   }
 );
 
