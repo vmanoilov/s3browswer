@@ -4,39 +4,38 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Loader2, Search } from 'lucide-react';
+import { findOpenBuckets } from '@/ai/flows/find-open-buckets';
 import { useToast } from '@/hooks/use-toast';
 
 export default function DashboardPage() {
-  const [bucketName, setBucketName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
 
   const handleScan = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!bucketName) {
-      toast({
+    setIsLoading(true);
+
+    try {
+      const results = await findOpenBuckets();
+      
+      // In a real app, we'd store the scan job and results in a DB.
+      // For this prototype, we'll pass the results via localStorage.
+      const scanId = `scan_${Date.now()}`;
+      localStorage.setItem(scanId, JSON.stringify(results.buckets));
+      
+      router.push(`/scans/${scanId}`);
+
+    } catch(error) {
+       console.error("Failed to scan for open buckets:", error);
+       toast({
         variant: "destructive",
         title: "Error",
-        description: "Please enter an S3 bucket name.",
-      });
-      return;
+        description: "Could not complete the scan for open buckets.",
+       });
+       setIsLoading(false);
     }
-
-    setIsLoading(true);
-    
-    // Simulate a scan and create a fake scan ID
-    const scanId = `scan_${Date.now()}`;
-    
-    // Simulate delay for scanning
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    // To pass the bucket name to the results page, we use query params
-    // In a real app, we'd store the scan job and results in a DB
-    router.push(`/scans/${scanId}?bucket=${encodeURIComponent(bucketName)}`);
   };
 
   return (
@@ -49,36 +48,25 @@ export default function DashboardPage() {
       </div>
       <Card className="shadow-md">
         <CardHeader>
-          <CardTitle>New Scan</CardTitle>
-          <CardDescription>Enter an S3 bucket name to scan for vulnerabilities.</CardDescription>
+          <CardTitle>Scan for Publicly Accessible Buckets</CardTitle>
+          <CardDescription>
+            Initiate a scan across your environment to discover S3 buckets that are exposed to the public internet.
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleScan} className="flex flex-col sm:flex-row items-end gap-4">
-            <div className="flex-grow w-full">
-              <Label htmlFor="bucketName" className="sr-only">
-                S3 Bucket Name
-              </Label>
-              <Input
-                id="bucketName"
-                placeholder="e.g., my-s3-bucket"
-                value={bucketName}
-                onChange={(e) => setBucketName(e.target.value)}
-                disabled={isLoading}
-              />
-            </div>
+          <form onSubmit={handleScan}>
             <Button type="submit" disabled={isLoading} className="w-full sm:w-auto">
               {isLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <Search className="mr-2 h-4 w-4" />
               )}
-              {isLoading ? 'Scanning...' : 'Scan Bucket'}
+              {isLoading ? 'Scanning...' : 'Start Environment Scan'}
             </Button>
           </form>
         </CardContent>
       </Card>
       
-      {/* A section for recent scans could go here */}
        <Card className="shadow-md">
         <CardHeader>
             <CardTitle>Recent Activity</CardTitle>

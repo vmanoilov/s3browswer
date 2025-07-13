@@ -8,9 +8,9 @@ import { Button } from '@/components/ui/button';
 import { ArrowRight } from 'lucide-react';
 
 const mockScans = [
-  { id: 'scan_1672531200', bucket: 'my-corp-bucket', date: '2024-07-28 10:00 AM', status: 'Completed', results: { vulnerable: 2, public: 1, secure: 5 } },
-  { id: 'scan_1672444800', bucket: 'test-assets-public', date: '2024-07-27 08:30 AM', status: 'Completed', results: { vulnerable: 0, public: 8, secure: 1 } },
-  { id: 'scan_1672358400', bucket: 'legacy-data', date: '2024-07-26 04:15 PM', status: 'Failed', results: { vulnerable: 0, public: 0, secure: 0 } },
+  { id: 'scan_1672531200', target: 'Environment Scan', date: '2024-07-28 10:00 AM', status: 'Completed', results: { vulnerable: 2, public: 1, secure: 0 } },
+  { id: 'scan_1672444800', target: 'Environment Scan', date: '2024-07-27 08:30 AM', status: 'Completed', results: { vulnerable: 0, public: 8, secure: 0 } },
+  { id: 'scan_1672358400', target: 'Single Bucket: legacy-data', date: '2024-07-26 04:15 PM', status: 'Failed', results: { vulnerable: 0, public: 0, secure: 0 } },
 ];
 
 export default function ScansPage() {
@@ -30,7 +30,7 @@ export default function ScansPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Bucket Name</TableHead>
+                <TableHead>Scan Target</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-center">Vulnerable</TableHead>
@@ -42,7 +42,7 @@ export default function ScansPage() {
             <TableBody>
               {mockScans.map(scan => (
                 <TableRow key={scan.id}>
-                  <TableCell className="font-medium">{scan.bucket}</TableCell>
+                  <TableCell className="font-medium">{scan.target}</TableCell>
                   <TableCell>{scan.date}</TableCell>
                   <TableCell>
                     <Badge variant={scan.status === 'Completed' ? 'default' : 'destructive'}>{scan.status}</Badge>
@@ -53,7 +53,7 @@ export default function ScansPage() {
                   <TableCell className="text-right">
                     {scan.status !== 'Failed' && (
                         <Button asChild variant="outline" size="sm">
-                          <Link href={`/scans/${scan.id}?bucket=${scan.bucket}`}>
+                          <Link href={`/scans/${scan.id}`}>
                             View Results <ArrowRight className="ml-2 h-4 w-4" />
                           </Link>
                         </Button>

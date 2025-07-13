@@ -1,34 +1,50 @@
 'use client';
 
-import { Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Download, FileJson, FileText } from "lucide-react";
 import ScanResultCard, { type ScanResult } from '@/components/scan-result-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 
-// Mock data generation
-const generateMockResults = (bucketName: string): ScanResult[] => {
-  return [
-    { id: '1', name: bucketName, status: 'Vulnerable', region: 'us-east-1', details: 'Public read access enabled via ACL. Insecure bucket policy allows anonymous users to list objects.' },
-    { id: '2', name: `${bucketName}-logs`, status: 'Secure', region: 'us-east-1', details: 'Properly configured for private logging with server-side encryption.' },
-    { id: '3', name: `${bucketName}-assets`, status: 'Public', region: 'us-west-2', details: 'Public read access configured for static website hosting. This might be intentional.' },
-    { id: '4', name: `${bucketName}-backups`, status: 'Vulnerable', region: 'eu-central-1', details: 'Server-side encryption is not enabled, and versioning is disabled.' },
-  ];
-};
-
 function ScanResultsPageContent({ params }: { params: { id: string } }) {
-  const searchParams = useSearchParams();
-  const bucketName = searchParams.get('bucket') || 'unknown-bucket';
+  const [scanResults, setScanResults] = useState<ScanResult[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // In a real app, you would fetch results from a database using the scan ID.
+    // For this prototype, we retrieve them from localStorage.
+    const storedResults = localStorage.getItem(params.id);
+    if (storedResults) {
+      setScanResults(JSON.parse(storedResults));
+    }
+    setIsLoading(false);
+  }, [params.id]);
+
+  if (isLoading) {
+    return <ScanResultsPageSkeleton />;
+  }
   
-  const scanResults = generateMockResults(bucketName);
+  if (scanResults.length === 0) {
+      return (
+        <Card>
+            <CardHeader>
+                <CardTitle>No Results Found</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <p className="text-muted-foreground">
+                    The scan completed, but no open buckets were found. Or, the scan results for this ID have expired.
+                </p>
+            </CardContent>
+        </Card>
+      )
+  }
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-bold font-headline">Scan Results</h1>
-        <p className="text-muted-foreground">Results for <span className="font-semibold text-primary">{bucketName}</span> (ID: {params.id})</p>
+        <p className="text-muted-foreground">Found {scanResults.length} open buckets (Scan ID: {params.id})</p>
       </div>
 
       <div className="flex flex-col sm:flex-row items-center gap-4">
