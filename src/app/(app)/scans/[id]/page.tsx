@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Download, FileJson, FileText } from "lucide-react";
 import ScanResultCard, { type ScanResult } from '@/components/scan-result-card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { useSearchParams } from 'next/navigation';
 
 function ScanResultsPageContent({ params }: { params: { id: string } }) {
   const [scanResults, setScanResults] = useState<ScanResult[]>([]);
@@ -16,7 +17,19 @@ function ScanResultsPageContent({ params }: { params: { id: string } }) {
     // For this prototype, we retrieve them from localStorage.
     const storedResults = localStorage.getItem(params.id);
     if (storedResults) {
-      setScanResults(JSON.parse(storedResults));
+      try {
+        const parsedResults = JSON.parse(storedResults);
+        // Ensure what we parsed is an array
+        if (Array.isArray(parsedResults)) {
+          setScanResults(parsedResults);
+        } else {
+          console.error("Stored scan results are not in the expected array format.");
+          setScanResults([]);
+        }
+      } catch (e) {
+        console.error("Failed to parse scan results from localStorage:", e);
+        setScanResults([]);
+      }
     }
     setIsLoading(false);
   }, [params.id]);
@@ -33,7 +46,7 @@ function ScanResultsPageContent({ params }: { params: { id: string } }) {
             </CardHeader>
             <CardContent>
                 <p className="text-muted-foreground">
-                    The scan completed, but no open buckets were found. Or, the scan results for this ID have expired.
+                    The scan may have completed with no findings, or the results for this ID have expired or are invalid.
                 </p>
             </CardContent>
         </Card>
