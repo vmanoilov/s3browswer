@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -11,18 +12,10 @@ import { analyzeS3BucketConfiguration } from '@/ai/flows/anomaly-detection';
 import { s3MisconfigurationDescription } from '@/ai/flows/s3-misconfiguration-description';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
-
-export type ScanResult = {
-  id: string;
-  name: string;
-  status: 'Secure' | 'Public' | 'Vulnerable';
-  provider: string;
-  region: string;
-  details: string;
-};
+import { type BucketInfo } from '@/ai/flows/schemas';
 
 interface ScanResultCardProps {
-  result: ScanResult;
+  result: BucketInfo;
 }
 
 const statusConfig = {

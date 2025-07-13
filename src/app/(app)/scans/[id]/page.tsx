@@ -4,12 +4,13 @@
 import { Suspense, useEffect, useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Download, FileJson, FileText } from "lucide-react";
-import ScanResultCard, { type ScanResult } from '@/components/scan-result-card';
+import ScanResultCard from '@/components/scan-result-card';
+import { type BucketInfo } from '@/ai/flows/schemas';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 
 function ScanResultsPageContent({ scanId }: { scanId: string }) {
-  const [scanResults, setScanResults] = useState<ScanResult[]>([]);
+  const [scanResults, setScanResults] = useState<BucketInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -117,10 +118,10 @@ function ScanResultsPageSkeleton() {
 }
 
 
-export default function ScanResultsPage({ params }: { params: { id: string } }) {
+export default function ScanResultsPage({ params: { id } }: { params: { id: string } }) {
   return (
     <Suspense fallback={<ScanResultsPageSkeleton />}>
-        <ScanResultsPageContent scanId={params.id} />
+        <ScanResultsPageContent scanId={id} />
     </Suspense>
   )
 }
