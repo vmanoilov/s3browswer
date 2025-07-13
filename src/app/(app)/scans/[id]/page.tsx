@@ -9,6 +9,7 @@ import { type BucketInfo } from '@/ai/flows/schemas';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 
+// This is the Client Component that displays the results.
 function ScanResultsPageContent({ scanId }: { scanId: string }) {
   const [scanResults, setScanResults] = useState<BucketInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -117,10 +118,14 @@ function ScanResultsPageSkeleton() {
     );
 }
 
+// This is the default export - a Server Component. It receives params from Next.js.
+export default function ScanResultsPage({ params }: { params: { id: string } }) {
+  // We can safely access params.id here because this is a Server Component.
+  const { id } = params;
 
-export default function ScanResultsPage({ params: { id } }: { params: { id: string } }) {
   return (
     <Suspense fallback={<ScanResultsPageSkeleton />}>
+        {/* We pass the resolved `id` string as a prop to the Client Component. */}
         <ScanResultsPageContent scanId={id} />
     </Suspense>
   )
