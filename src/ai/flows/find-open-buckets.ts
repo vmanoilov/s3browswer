@@ -41,10 +41,10 @@ const performDiscovery = async (
       case 'scaleway':
       case 'custom':
          // Placeholder for other providers
-         stream.yield({type: 'log', message: `Scanning for provider '${provider}' is not yet implemented.`});
+         stream({type: 'log', message: `Scanning for provider '${provider}' is not yet implemented.`});
          break;
       default:
-        stream.yield({type: 'log', message: `Unknown provider: ${provider}`});
+        stream({type: 'log', message: `Unknown provider: ${provider}`});
         break;
   }
 };
@@ -59,12 +59,12 @@ const findOpenBucketsFlow = ai.defineFlow(
   },
   async ({ providers, keywords }, stream) => {
     
-    stream.yield({type: 'log', message: `Starting scan for ${providers.join(', ')}...`});
+    stream({type: 'log', message: `Starting scan for ${providers.join(', ')}...`});
 
     const discoveryPromises = providers.map(provider => performDiscovery(provider, keywords, stream));
     await Promise.all(discoveryPromises);
 
-    stream.yield({type: 'log', message: 'Scan completed.'});
+    stream({type: 'log', message: 'Scan completed.'});
     return [];
   }
 );

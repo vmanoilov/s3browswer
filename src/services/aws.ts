@@ -62,7 +62,7 @@ const scanBucket = async (bucketName: string, source: 'Authenticated' | 'Discove
         if (Grants) {
             const { public: isPublic, details } = isBucketPublicByAcl(Grants);
             if (isPublic) {
-                stream.yield({
+                stream({
                     type: 'result',
                     bucket: {
                         id: `aws-${bucketName}`, name: bucketName, status: 'Vulnerable', provider: 'AWS',
@@ -88,7 +88,7 @@ const scanBucket = async (bucketName: string, source: 'Authenticated' | 'Discove
                 // This bucket is explicitly configured to be private and secure. We can skip it.
                 return;
                 } else {
-                     stream.yield({
+                     stream({
                         type: 'result',
                         bucket: {
                             id: `aws-${bucketName}`, name: bucketName, status: 'Vulnerable', provider: 'AWS', region: 'N/A', 
@@ -98,7 +98,7 @@ const scanBucket = async (bucketName: string, source: 'Authenticated' | 'Discove
                 }
         } catch(e: any) {
             if (e.name === 'NoSuchPublicAccessBlockConfiguration') {
-                stream.yield({
+                stream({
                     type: 'result',
                     bucket: {
                         id: `aws-${bucketName}`, name: bucketName, status: 'Public', provider: 'AWS', region: 'N/A', 
@@ -116,7 +116,7 @@ const scanBucket = async (bucketName: string, source: 'Authenticated' | 'Discove
             // This is an expected error for discovered buckets we don't own or have access to.
             return;
         }
-        stream.yield({type: 'log', message: `Could not fully check bucket ${bucketName}: ${error.message || error.name}`});
+        stream({type: 'log', message: `Could not fully check bucket ${bucketName}: ${error.message || error.name}`});
         return; 
     }
 }
@@ -125,15 +125,15 @@ const scanBucket = async (bucketName: string, source: 'Authenticated' | 'Discove
 export const discoverAwsBuckets = async (keywords: string[] = [], stream: Stream<ScanUpdate>): Promise<void> => {
     const scannedNames = new Set<string>();
 
-    stream.yield({type: 'log', message: 'Starting AWS Scan...'});
+    stream({type: 'log', message: 'Starting AWS Scan...'});
 
     // Step 1: Scan buckets from the authenticated user's account.
     // This finds misconfigurations in buckets you own.
     try {
-        stream.yield({type: 'log', message: 'Checking for AWS credentials to scan owned buckets...'});
+        stream({type: 'log', message: 'Checking for AWS credentials to scan owned buckets...'});
         const { Buckets } = await s3Client.send(new ListBucketsCommand({}));
         if (Buckets) {
-            stream.yield({type: 'log', message: `Found ${Buckets.length} buckets in your account. Analyzing...`});
+            stream({type: 'log', message: `Found ${Buckets.length} buckets in your account. Analyzing...`});
             for (const bucket of Buckets) {
                 if (!bucket.Name || scannedNames.has(bucket.Name)) continue;
                 scannedNames.add(bucket.Name);
@@ -143,9 +143,9 @@ export const discoverAwsBuckets = async (keywords: string[] = [], stream: Stream
     } catch (error: any) {
         // Handle cases where credentials might be missing or invalid.
         if (error.name === 'CredentialsProviderError') {
-             stream.yield({type: 'log', message: "AWS credentials not found. Skipping authenticated scan. To scan buckets you own, please configure your environment for AWS access."});
+             stream({type: 'log', message: "AWS credentials not found. Skipping authenticated scan. To scan buckets you own, please configure your environment for AWS access."});
         } else {
-            stream.yield({type: 'log', message: `Failed to list AWS buckets: ${error.message || error.name}`});
+            stream({type: 'log', message: `Failed to list AWS buckets: ${error.message || error.name}`});
             // Don't re-throw, allow the discovery scan to proceed.
         }
     }
@@ -153,9 +153,9 @@ export const discoverAwsBuckets = async (keywords: string[] = [], stream: Stream
     // Step 2: Discover public buckets using keyword permutations.
     // This finds "shadow IT" or unknown public buckets by guessing common names.
     if (keywords.length > 0) {
-        stream.yield({type: 'log', message: `Generating and testing bucket names from ${keywords.length} keywords...`});
+        stream({type: 'log', message: `Generating and testing bucket names from ${keywords.length} keywords...`});
         const potentialBuckets = generateBucketPermutations(keywords);
-        stream.yield({type: 'log', message: `Generated ${potentialBuckets.length} potential names. Starting discovery...`});
+        stream({type: 'log', message: `Generated ${potentialBuckets.length} potential names. Starting discovery...`});
         
         for(const bucketName of potentialBuckets) {
             if (scannedNames.has(bucketName)) continue;
@@ -164,7 +164,7 @@ export const discoverAwsBuckets = async (keywords: string[] = [], stream: Stream
                 // A HEAD request is a cheap way to see if a bucket exists at all.
                 // It doesn't require list permissions.
                 await s3Client.send(new HeadBucketCommand({ Bucket: bucketName }));
-                stream.yield({type: 'log', message: `Potential bucket found: ${bucketName}. Analyzing access...`});
+                stream({type: 'log', message: `Potential bucket found: ${bucketName}. Analyzing access...`});
 
                 // If HeadBucket succeeds, the bucket exists. Now we can run our detailed scan
                 // to check if it's actually public.
@@ -176,12 +176,12 @@ export const discoverAwsBuckets = async (keywords: string[] = [], stream: Stream
                    continue;
                 }
                  // Log other, unexpected errors.
-                 stream.yield({type: 'log', message: `Error during discovery for bucket ${bucketName}: ${error.message || error.name}`});
+                 stream({type: 'log', message: `Error during discovery for bucket ${bucketName}: ${error.message || error.name}`});
             }
         }
     } else {
-        stream.yield({type: 'log', message: 'No keywords provided. Skipping public discovery phase.'});
+        stream({type: 'log', message: 'No keywords provided. Skipping public discovery phase.'});
     }
 
-    stream.yield({type: 'log', message: 'AWS Scan finished.'});
+    stream({type: 'log', message: 'AWS Scan finished.'});
 };
