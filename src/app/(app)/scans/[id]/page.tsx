@@ -1,3 +1,4 @@
+
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
@@ -6,16 +7,15 @@ import { Download, FileJson, FileText } from "lucide-react";
 import ScanResultCard, { type ScanResult } from '@/components/scan-result-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { useSearchParams } from 'next/navigation';
 
-function ScanResultsPageContent({ params }: { params: { id: string } }) {
+function ScanResultsPageContent({ scanId }: { scanId: string }) {
   const [scanResults, setScanResults] = useState<ScanResult[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     // In a real app, you would fetch results from a database using the scan ID.
     // For this prototype, we retrieve them from localStorage.
-    const storedResults = localStorage.getItem(params.id);
+    const storedResults = localStorage.getItem(scanId);
     if (storedResults) {
       try {
         const parsedResults = JSON.parse(storedResults);
@@ -32,7 +32,7 @@ function ScanResultsPageContent({ params }: { params: { id: string } }) {
       }
     }
     setIsLoading(false);
-  }, [params.id]);
+  }, [scanId]);
 
   if (isLoading) {
     return <ScanResultsPageSkeleton />;
@@ -57,7 +57,7 @@ function ScanResultsPageContent({ params }: { params: { id: string } }) {
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-bold font-headline">Scan Results</h1>
-        <p className="text-muted-foreground">Found {scanResults.length} open buckets (Scan ID: {params.id})</p>
+        <p className="text-muted-foreground">Found {scanResults.length} open buckets (Scan ID: {scanId})</p>
       </div>
 
       <div className="flex flex-col sm:flex-row items-center gap-4">
@@ -120,7 +120,7 @@ function ScanResultsPageSkeleton() {
 export default function ScanResultsPage({ params }: { params: { id: string } }) {
   return (
     <Suspense fallback={<ScanResultsPageSkeleton />}>
-        <ScanResultsPageContent params={params} />
+        <ScanResultsPageContent scanId={params.id} />
     </Suspense>
   )
 }
