@@ -1,5 +1,5 @@
 import { S3Client, ListBucketsCommand, GetBucketAclCommand, GetPublicAccessBlockCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
-import type { ScanUpdate } from '@/ai/flows/find-open-buckets';
+import type { ScanUpdate } from '@/ai/flows/schemas';
 import type { Stream } from 'genkit/stream';
 
 // Note on Credentials: This service uses the AWS SDK, which will automatically
@@ -116,7 +116,7 @@ const scanBucket = async (bucketName: string, source: 'Authenticated' | 'Discove
             // This is an expected error for discovered buckets we don't own or have access to.
             return;
         }
-        stream.log(`Could not fully check bucket ${bucketName}: ${error.message || error.name}`);
+        stream.yield({type: 'log', message: `Could not fully check bucket ${bucketName}: ${error.message || error.name}`});
         return; 
     }
 }
@@ -125,15 +125,15 @@ const scanBucket = async (bucketName: string, source: 'Authenticated' | 'Discove
 export const discoverAwsBuckets = async (keywords: string[] = [], stream: Stream<ScanUpdate>): Promise<void> => {
     const scannedNames = new Set<string>();
 
-    stream.log('Starting AWS Scan...');
+    stream.yield({type: 'log', message: 'Starting AWS Scan...'});
 
     // Step 1: Scan buckets from the authenticated user's account.
     // This finds misconfigurations in buckets you own.
     try {
-        stream.log('Checking for AWS credentials to scan owned buckets...');
+        stream.yield({type: 'log', message: 'Checking for AWS credentials to scan owned buckets...'});
         const { Buckets } = await s3Client.send(new ListBucketsCommand({}));
         if (Buckets) {
-            stream.log(`Found ${Buckets.length} buckets in your account. Analyzing...`);
+            stream.yield({type: 'log', message: `Found ${Buckets.length} buckets in your account. Analyzing...`});
             for (const bucket of Buckets) {
                 if (!bucket.Name || scannedNames.has(bucket.Name)) continue;
                 scannedNames.add(bucket.Name);
@@ -143,9 +143,9 @@ export const discoverAwsBuckets = async (keywords: string[] = [], stream: Stream
     } catch (error: any) {
         // Handle cases where credentials might be missing or invalid.
         if (error.name === 'CredentialsProviderError') {
-             stream.log("AWS credentials not found. Skipping authenticated scan. To scan buckets you own, please configure your environment for AWS access.");
+             stream.yield({type: 'log', message: "AWS credentials not found. Skipping authenticated scan. To scan buckets you own, please configure your environment for AWS access."});
         } else {
-            stream.log(`Failed to list AWS buckets: ${error.message || error.name}`);
+            stream.yield({type: 'log', message: `Failed to list AWS buckets: ${error.message || error.name}`});
             // Don't re-throw, allow the discovery scan to proceed.
         }
     }
@@ -153,9 +153,9 @@ export const discoverAwsBuckets = async (keywords: string[] = [], stream: Stream
     // Step 2: Discover public buckets using keyword permutations.
     // This finds "shadow IT" or unknown public buckets by guessing common names.
     if (keywords.length > 0) {
-        stream.log(`Generating and testing bucket names from ${keywords.length} keywords...`);
+        stream.yield({type: 'log', message: `Generating and testing bucket names from ${keywords.length} keywords...`});
         const potentialBuckets = generateBucketPermutations(keywords);
-        stream.log(`Generated ${potentialBuckets.length} potential names. Starting discovery...`);
+        stream.yield({type: 'log', message: `Generated ${potentialBuckets.length} potential names. Starting discovery...`});
         
         for(const bucketName of potentialBuckets) {
             if (scannedNames.has(bucketName)) continue;
@@ -164,7 +164,7 @@ export const discoverAwsBuckets = async (keywords: string[] = [], stream: Stream
                 // A HEAD request is a cheap way to see if a bucket exists at all.
                 // It doesn't require list permissions.
                 await s3Client.send(new HeadBucketCommand({ Bucket: bucketName }));
-                stream.log(`Potential bucket found: ${bucketName}. Analyzing access...`);
+                stream.yield({type: 'log', message: `Potential bucket found: ${bucketName}. Analyzing access...`});
 
                 // If HeadBucket succeeds, the bucket exists. Now we can run our detailed scan
                 // to check if it's actually public.
@@ -176,12 +176,12 @@ export const discoverAwsBuckets = async (keywords: string[] = [], stream: Stream
                    continue;
                 }
                  // Log other, unexpected errors.
-                 stream.log(`Error during discovery for bucket ${bucketName}: ${error.message || error.name}`);
+                 stream.yield({type: 'log', message: `Error during discovery for bucket ${bucketName}: ${error.message || error.name}`});
             }
         }
     } else {
-        stream.log('No keywords provided. Skipping public discovery phase.');
+        stream.yield({type: 'log', message: 'No keywords provided. Skipping public discovery phase.'});
     }
 
-    stream.log('AWS Scan finished.');
+    stream.yield({type: 'log', message: 'AWS Scan finished.'});
 };
