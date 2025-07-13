@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, Search, Terminal } from 'lucide-react';
-import { findOpenBuckets } from '@/ai/flows/find-open-buckets';
+import { findOpenBucketsFlow } from '@/ai/flows/find-open-buckets';
 import { type BucketInfo, type ScanUpdate } from '@/ai/flows/schemas';
 import { useToast } from '@/hooks/use-toast';
 import { Label } from '@/components/ui/label';
@@ -59,7 +59,7 @@ export default function DashboardPage() {
     setIsLogOpen(true);
 
     try {
-      const { stream, response } = findOpenBuckets({
+      const { stream, response } = findOpenBucketsFlow({
         providers: selectedProviders,
         keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
       });

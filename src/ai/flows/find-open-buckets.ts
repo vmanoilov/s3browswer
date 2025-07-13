@@ -3,9 +3,7 @@
 /**
  * @fileOverview A Genkit flow to find publicly accessible cloud storage resources.
  *
- * - findOpenBuckets - A function that returns a list of open storage buckets for a given provider.
- * - FindOpenBucketsInput - The input type for the findOpenBuckets function.
- * - FindOpenBucketsOutput - The return type for the findOpenBuckets function.
+ * - findOpenBucketsFlow - A flow that returns a list of open storage buckets for a given provider.
  */
 
 import {ai} from '@/ai/genkit';
@@ -15,7 +13,6 @@ import {
   FindOpenBucketsInputSchema,
   FindOpenBucketsOutputSchema,
   ScanUpdateSchema,
-  type FindOpenBucketsInput,
   type ScanUpdate
 } from './schemas';
 
@@ -50,7 +47,7 @@ const performDiscovery = async (
 };
 
 
-const findOpenBucketsFlow = ai.defineFlow(
+export const findOpenBucketsFlow = ai.defineFlow(
   {
     name: 'findOpenBucketsFlow',
     inputSchema: FindOpenBucketsInputSchema,
@@ -68,7 +65,3 @@ const findOpenBucketsFlow = ai.defineFlow(
     return [];
   }
 );
-
-export async function findOpenBuckets(input: FindOpenBucketsInput) {
-  return findOpenBucketsFlow(input);
-}
