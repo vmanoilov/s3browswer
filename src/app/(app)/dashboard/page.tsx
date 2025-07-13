@@ -7,21 +7,41 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Search } from 'lucide-react';
 import { findOpenBuckets } from '@/ai/flows/find-open-buckets';
 import { useToast } from '@/hooks/use-toast';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+
+const providers = [
+  { value: 'aws', label: 'AWS' },
+  { value: 'gcp', label: 'Google Cloud' },
+  { value: 'digitalocean', label: 'DigitalOcean' },
+  { value: 'dreamhost', label: 'DreamHost' },
+  { value: 'linode', label: 'Linode' },
+  { value: 'scaleway', label: 'Scaleway' },
+  { value: 'custom', label: 'Custom' },
+];
 
 export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState<string | undefined>(undefined);
   const router = useRouter();
   const { toast } = useToast();
 
   const handleScan = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedProvider) {
+      toast({
+        variant: "destructive",
+        title: "No Provider Selected",
+        description: "Please select a cloud provider to scan.",
+      });
+      return;
+    }
+    
     setIsLoading(true);
 
     try {
-      const results = await findOpenBuckets();
+      const results = await findOpenBuckets({ provider: selectedProvider });
       
-      // In a real app, we'd store the scan job and results in a DB.
-      // For this prototype, we'll pass the results via localStorage.
       const scanId = `scan_${Date.now()}`;
       localStorage.setItem(scanId, JSON.stringify(results.buckets));
       
@@ -50,18 +70,31 @@ export default function DashboardPage() {
         <CardHeader>
           <CardTitle>Scan for Publicly Accessible Buckets</CardTitle>
           <CardDescription>
-            Initiate a scan across your environment to discover S3 buckets that are exposed to the public internet.
+            Select a cloud provider and initiate a scan to discover publicly exposed storage resources.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleScan}>
-            <Button type="submit" disabled={isLoading} className="w-full sm:w-auto">
+          <form onSubmit={handleScan} className="space-y-4">
+            <div>
+                <Label htmlFor="provider">Cloud Provider</Label>
+                <Select onValueChange={setSelectedProvider} value={selectedProvider}>
+                    <SelectTrigger id="provider" className="w-full sm:w-[300px]">
+                        <SelectValue placeholder="Select a provider..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {providers.map(p => (
+                            <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+            <Button type="submit" disabled={isLoading || !selectedProvider} className="w-full sm:w-auto">
               {isLoading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <Search className="mr-2 h-4 w-4" />
               )}
-              {isLoading ? 'Scanning...' : 'Start Environment Scan'}
+              {isLoading ? 'Scanning...' : 'Start Scan'}
             </Button>
           </form>
         </CardContent>

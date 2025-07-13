@@ -16,6 +16,7 @@ export type ScanResult = {
   id: string;
   name: string;
   status: 'Secure' | 'Public' | 'Vulnerable';
+  provider: string;
   region: string;
   details: string;
 };
@@ -101,7 +102,7 @@ export default function ScanResultCard({ result }: ScanResultCardProps) {
                         {result.status}
                     </Badge>
                 </div>
-                <CardDescription>{result.region}</CardDescription>
+                <CardDescription>{result.provider} ({result.region})</CardDescription>
             </CardHeader>
             <CardContent className="flex-grow">
                 <p className="text-sm text-muted-foreground">{result.details}</p>
