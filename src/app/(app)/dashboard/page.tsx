@@ -9,6 +9,7 @@ import { findOpenBuckets } from '@/ai/flows/find-open-buckets';
 import { useToast } from '@/hooks/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 
 const providers = [
   { value: 'aws', label: 'AWS' },
@@ -23,6 +24,7 @@ const providers = [
 export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<string | undefined>(undefined);
+  const [keywords, setKeywords] = useState('');
   const router = useRouter();
   const { toast } = useToast();
 
@@ -40,7 +42,10 @@ export default function DashboardPage() {
     setIsLoading(true);
 
     try {
-      const results = await findOpenBuckets({ provider: selectedProvider });
+      const results = await findOpenBuckets({ 
+        provider: selectedProvider,
+        keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
+      });
       
       const scanId = `scan_${Date.now()}`;
       localStorage.setItem(scanId, JSON.stringify(results.buckets));
@@ -68,25 +73,37 @@ export default function DashboardPage() {
       </div>
       <Card className="shadow-md">
         <CardHeader>
-          <CardTitle>Scan for Publicly Accessible Buckets</CardTitle>
+          <CardTitle>Discover Publicly Accessible Buckets</CardTitle>
           <CardDescription>
-            Select a cloud provider and initiate a scan to discover publicly exposed storage resources.
+            Select a provider and add optional keywords to discover exposed storage resources, including unauthenticated and shadow assets.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleScan} className="space-y-4">
-            <div>
-                <Label htmlFor="provider">Cloud Provider</Label>
-                <Select onValueChange={setSelectedProvider} value={selectedProvider}>
-                    <SelectTrigger id="provider" className="w-full sm:w-[300px]">
-                        <SelectValue placeholder="Select a provider..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {providers.map(p => (
-                            <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <Label htmlFor="provider">Cloud Provider</Label>
+                    <Select onValueChange={setSelectedProvider} value={selectedProvider}>
+                        <SelectTrigger id="provider">
+                            <SelectValue placeholder="Select a provider..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {providers.map(p => (
+                                <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div>
+                    <Label htmlFor="keywords">Discovery Keywords (Optional)</Label>
+                    <Input 
+                        id="keywords"
+                        placeholder="e.g., my-company, assets, backup"
+                        value={keywords}
+                        onChange={(e) => setKeywords(e.target.value)}
+                    />
+                     <p className="text-xs text-muted-foreground mt-1">Comma-separated keywords to search for public buckets.</p>
+                </div>
             </div>
             <Button type="submit" disabled={isLoading || !selectedProvider} className="w-full sm:w-auto">
               {isLoading ? (
@@ -94,7 +111,7 @@ export default function DashboardPage() {
               ) : (
                 <Search className="mr-2 h-4 w-4" />
               )}
-              {isLoading ? 'Scanning...' : 'Start Scan'}
+              {isLoading ? 'Scanning...' : 'Start Discovery Scan'}
             </Button>
           </form>
         </CardContent>

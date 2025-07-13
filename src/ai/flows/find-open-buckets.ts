@@ -25,6 +25,7 @@ export type BucketInfo = z.infer<typeof BucketInfoSchema>;
 
 const FindOpenBucketsInputSchema = z.object({
   provider: z.string().describe('The cloud provider to scan. e.g., AWS, GCP, DigitalOcean.'),
+  keywords: z.array(z.string()).optional().describe('Optional list of keywords to generate and test potential bucket names.'),
 });
 export type FindOpenBucketsInput = z.infer<typeof FindOpenBucketsInputSchema>;
 
@@ -35,12 +36,12 @@ export type FindOpenBucketsOutput = z.infer<typeof FindOpenBucketsOutputSchema>;
 
 
 // This function orchestrates which discovery process to run based on the provider.
-const performDiscovery = async (provider: string): Promise<FindOpenBucketsOutput> => {
+const performDiscovery = async (provider: string, keywords?: string[]): Promise<FindOpenBucketsOutput> => {
   const providerKey = provider.toLowerCase().replace(/\s/g, '');
 
   switch(providerKey) {
       case 'aws':
-        return await discoverAwsBuckets();
+        return await discoverAwsBuckets(keywords);
       // NOTE: You would add cases for other providers here by creating new service files.
       // e.g., import { discoverGcpBuckets } from '@/services/gcp';
       case 'gcp':
@@ -65,8 +66,8 @@ const findOpenBucketsFlow = ai.defineFlow(
     inputSchema: FindOpenBucketsInputSchema,
     outputSchema: FindOpenBucketsOutputSchema,
   },
-  async ({ provider }) => {
-    return performDiscovery(provider);
+  async ({ provider, keywords }) => {
+    return performDiscovery(provider, keywords);
   }
 );
 
