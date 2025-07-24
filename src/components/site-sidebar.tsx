@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, ShieldCheck, CalendarClock, LineChart, ShieldAlert } from "lucide-react";
+import { LayoutDashboard, ShieldCheck, CalendarClock, LineChart, ShieldAlert, Search } from "lucide-react";
 import {
   SidebarHeader,
   SidebarContent,
@@ -14,7 +14,7 @@ import {
 import { Button } from "./ui/button";
 
 const menuItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Browser", icon: LayoutDashboard },
   { href: "/scans", label: "Scans", icon: ShieldCheck },
   { href: "/scheduled", label: "Scheduled Scans", icon: CalendarClock },
   { href: "/reporting", label: "Reporting", icon: LineChart },
@@ -39,7 +39,7 @@ export function SiteSidebar() {
             <SidebarMenuItem key={item.href}>
               <SidebarMenuButton
                 asChild
-                isActive={pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href))}
+                isActive={pathname.startsWith(item.href)}
                 className="justify-start"
                 tooltip={item.label}
               >

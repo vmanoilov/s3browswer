@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Folder, File, Loader2, ServerCrash, ArrowLeft, Search } from 'lucide-react';
@@ -15,12 +16,14 @@ interface BucketContents {
 }
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [bucketUrl, setBucketUrl] = useState('http://prod.land.s3.amazonaws.com/');
   const [currentPath, setCurrentPath] = useState('');
   const [contents, setContents] = useState<BucketContents | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [localSearch, setLocalSearch] = useState('');
 
   const handleBrowse = async (path = '') => {
     if (!bucketUrl) {
@@ -30,9 +33,8 @@ export default function DashboardPage() {
     setIsLoading(true);
     setError(null);
     setContents(null);
-    setSearchTerm(''); // Reset search on new path
+    setLocalSearch(''); 
     try {
-      // Ensure the base URL ends with a slash
       const formattedUrl = bucketUrl.endsWith('/') ? bucketUrl : `${bucketUrl}/`;
       const fullUrl = `${formattedUrl}${path}`;
       
@@ -56,14 +58,20 @@ export default function DashboardPage() {
   
   const handleBackClick = () => {
     if (!currentPath) return;
-    // Find the last '/' and slice the path up to it
     const newPath = currentPath.slice(0, currentPath.lastIndexOf('/', currentPath.length - 2) + 1);
     handleBrowse(newPath);
   };
 
   const handleUrlSubmit = () => {
-      // When user enters a new URL, reset path and browse
       handleBrowse('');
+  };
+
+  const handleGlobalSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchTerm) return;
+    const encodedBucketUrl = encodeURIComponent(getBaseUrl());
+    const encodedSearchTerm = encodeURIComponent(searchTerm);
+    router.push(`/search-results?url=${encodedBucketUrl}&q=${encodedSearchTerm}`);
   };
 
   // Initial load
@@ -77,8 +85,8 @@ export default function DashboardPage() {
   };
   
   const filteredContents = contents ? {
-      folders: contents.folders.filter(f => f.toLowerCase().includes(searchTerm.toLowerCase())),
-      files: contents.files.filter(f => f.toLowerCase().includes(searchTerm.toLowerCase())),
+      folders: contents.folders.filter(f => f.toLowerCase().includes(localSearch.toLowerCase())),
+      files: contents.files.filter(f => f.toLowerCase().includes(localSearch.toLowerCase())),
   } : null;
 
   return (
@@ -114,6 +122,26 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
+      <Card>
+          <CardHeader>
+            <CardTitle>Global Bucket Search</CardTitle>
+            <CardDescription>Search for files across the entire bucket. This may take a moment for large buckets.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleGlobalSearch} className="flex w-full max-w-lg items-center space-x-2">
+                <Input
+                    type="search"
+                    placeholder="Search entire bucket..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                />
+                <Button type="submit">
+                    <Search className="mr-2 h-4 w-4" /> Search
+                </Button>
+            </form>
+          </CardContent>
+      </Card>
+
       {error && (
         <Alert variant="destructive">
           <ServerCrash className="h-4 w-4" />
@@ -139,7 +167,7 @@ export default function DashboardPage() {
                 </Button>
               )}
               <div>
-                <CardTitle>Bucket Contents</CardTitle>
+                <CardTitle>Current Directory Contents</CardTitle>
                 <CardDescription className="font-mono">{`${getBaseUrl()}${currentPath}`}</CardDescription>
               </div>
             </div>
@@ -149,10 +177,10 @@ export default function DashboardPage() {
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                     type="search"
-                    placeholder="Search current directory..."
+                    placeholder="Filter current directory..."
                     className="pl-8 sm:w-[300px]"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    value={localSearch}
+                    onChange={(e) => setLocalSearch(e.target.value)}
                 />
             </div>
 
