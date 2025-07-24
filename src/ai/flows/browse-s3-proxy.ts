@@ -17,8 +17,13 @@ const S3ProxyInputSchema = z.object({
 });
 export type S3ProxyInput = z.infer<typeof S3ProxyInputSchema>;
 
+const S3FileSchema = z.object({
+    key: z.string(),
+    lastModified: z.string(),
+});
+
 const S3ProxyOutputSchema = z.object({
-  files: z.array(z.string()).describe('A list of file keys found in the bucket.'),
+  files: z.array(S3FileSchema).describe('A list of file objects found in the bucket.'),
   folders: z.array(z.string()).describe('A list of folder prefixes found in the bucket.'),
   error: z.string().optional().describe('An error message if the operation failed.'),
 });
@@ -38,11 +43,13 @@ const browseS3ProxyFlow = ai.defineFlow(
   async ({ bucketUrl }) => {
     try {
       const url = new URL(bucketUrl);
-      const prefix = decodeURIComponent(url.pathname.substring(1)); // S3 path without leading '/'
+      // The prefix for S3 is the path without the leading slash.
+      // It needs to be decoded first (e.g., 'Client%20docs/' -> 'Client docs/')
+      // and then re-encoded for the fetch URL.
+      const path = decodeURIComponent(url.pathname.substring(1));
 
-      // For directory listing, S3 expects a URL parameter `delimiter=/`
-      // and optionally a `prefix`
-      const listUrl = `${url.origin}/?delimiter=/&prefix=${encodeURIComponent(prefix)}`;
+      // For directory listing, S3 expects URL parameters `delimiter=/` and `prefix`.
+      const listUrl = `${url.origin}/?delimiter=/&prefix=${encodeURIComponent(path)}`;
 
       const response = await fetch(listUrl);
 
@@ -51,19 +58,48 @@ const browseS3ProxyFlow = ai.defineFlow(
       }
 
       const xmlText = await response.text();
-      
-      const files = Array.from(xmlText.matchAll(/<Key>(.*?)<\/Key>/g))
-        .map(m => m[1])
-        .filter(key => key !== prefix) // Exclude the directory itself
-        .map(key => key.substring(prefix.length)); // Get relative path
+
+      // This is a simplified XML parser that is NOT robust for all XML, but works for S3's ListBucketResult format.
+      // A production app should use a proper XML parsing library.
+
+      const fileContents = Array.from(xmlText.matchAll(/<Contents>(.*?)<\/Contents>/gs)).map(match => {
+          const content = match[1];
+          const keyMatch = content.match(/<Key>(.*?)<\/Key>/);
+          const lastModifiedMatch = content.match(/<LastModified>(.*?)<\/LastModified>/);
+
+          const fullKey = keyMatch ? keyMatch[1] : '';
+          
+          // Exclude the key if it represents the directory itself
+          if (fullKey === path) return null;
+
+          // Make the key relative to the current path
+          const relativeKey = fullKey.substring(path.length);
+
+          // We only want direct children, not children of sub-folders
+          if (relativeKey.includes('/')) return null;
+
+          return {
+              key: relativeKey,
+              lastModified: lastModifiedMatch ? lastModifiedMatch[1] : new Date().toISOString()
+          };
+      }).filter(Boolean); // Filter out nulls and empty strings
+
 
       const folders = Array.from(xmlText.matchAll(/<Prefix>(.*?)<\/Prefix>/g))
         .map(m => m[1])
-        .filter(p => p !== prefix) // Exclude self
-        .map(p => p.substring(prefix.length)); // Get relative path
+        .map(p => {
+          if (p === path) return null; // Exclude self reference
+          const relativePath = p.substring(path.length);
+          // We only want direct children, so there should be no slashes in the middle
+          if (relativePath.slice(0, -1).includes('/')) return null;
+          return relativePath;
+        })
+        .filter(Boolean); // filter out nulls
 
       return {
-        files: files.filter(f => !f.endsWith('/')), // filter out "directory" objects
+        // @ts-ignore - filter(Boolean) above ensures they are not null
+        files: fileContents.filter(f => f.key),
+        // @ts-ignore
         folders: Array.from(new Set(folders)), // Make unique
       };
 

@@ -5,15 +5,27 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Folder, File, Loader2, ServerCrash, ArrowLeft, Search } from 'lucide-react';
+import { Folder, File, Loader2, ServerCrash, ArrowLeft, Search, ListFilter } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { browseS3Proxy } from '@/ai/flows/browse-s3-proxy';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Badge } from '@/components/ui/badge';
+
+interface S3File {
+  key: string;
+  lastModified: string;
+}
 
 interface BucketContents {
-  files: string[];
+  files: S3File[];
   folders: string[];
 }
+
+type SortField = 'key' | 'lastModified';
+type SortDirection = 'asc' | 'desc';
+
+const PRESET_EXTENSIONS = ['txt', 'doc', 'docx', 'xls', 'xlsx', 'pdf', 'zip'];
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -22,8 +34,15 @@ export default function DashboardPage() {
   const [currentPath, setCurrentPath] = useState('');
   const [contents, setContents] = useState<BucketContents | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [localSearch, setLocalSearch] = useState('');
+  const [globalSearch, setGlobalSearch] = useState('');
+  
+  // Filtering and Sorting State
+  const [localFilter, setLocalFilter] = useState('');
+  const [sortField, setSortField] = useState<SortField>('key');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [extensionFilter, setExtensionFilter] = useState('');
+  const [customExtension, setCustomExtension] = useState('');
+
 
   const handleBrowse = async (path = '') => {
     if (!bucketUrl) {
@@ -33,7 +52,10 @@ export default function DashboardPage() {
     setIsLoading(true);
     setError(null);
     setContents(null);
-    setLocalSearch('');
+    setLocalFilter('');
+    setExtensionFilter('');
+    setCustomExtension('');
+
     try {
       const formattedUrl = bucketUrl.endsWith('/') ? bucketUrl : `${bucketUrl}/`;
       const fullUrl = `${formattedUrl}${path}`;
@@ -68,13 +90,12 @@ export default function DashboardPage() {
 
   const handleGlobalSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!searchTerm) return;
+    if (!globalSearch) return;
     const encodedBucketUrl = encodeURIComponent(getBaseUrl());
-    const encodedSearchTerm = encodeURIComponent(searchTerm);
+    const encodedSearchTerm = encodeURIComponent(globalSearch);
     router.push(`/search-results?url=${encodedBucketUrl}&q=${encodedSearchTerm}`);
   };
 
-  // Initial load
   useEffect(() => {
     handleBrowse();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -83,10 +104,44 @@ export default function DashboardPage() {
   const getBaseUrl = () => {
       return bucketUrl.endsWith('/') ? bucketUrl : `${bucketUrl}/`;
   };
+
+  const handleSortChange = (field: SortField) => {
+    if (field === sortField) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
   
-  const filteredContents = contents ? {
-      folders: contents.folders.filter(f => f.toLowerCase().includes(localSearch.toLowerCase())),
-      files: contents.files.filter(f => f.toLowerCase().includes(localSearch.toLowerCase())),
+  const handleExtensionFilter = (ext: string) => {
+    setExtensionFilter(ext === extensionFilter ? '' : ext);
+    setCustomExtension('');
+  }
+
+  const handleCustomExtensionSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setExtensionFilter(customExtension);
+  }
+
+  const sortedAndFilteredContents = contents ? {
+      folders: contents.folders
+        .filter(f => f.toLowerCase().includes(localFilter.toLowerCase()))
+        .sort((a, b) => a.localeCompare(b)),
+      files: contents.files
+        .filter(f => f.key.toLowerCase().includes(localFilter.toLowerCase()))
+        .filter(f => extensionFilter ? f.key.toLowerCase().endsWith(`.${extensionFilter.toLowerCase()}`) : true)
+        .sort((a, b) => {
+          const aValue = a[sortField];
+          const bValue = b[sortField];
+          let comparison = 0;
+          if (aValue > bValue) {
+            comparison = 1;
+          } else if (aValue < bValue) {
+            comparison = -1;
+          }
+          return sortDirection === 'asc' ? comparison : -comparison;
+        }),
   } : null;
 
   const getDisplayPath = () => {
@@ -140,8 +195,8 @@ export default function DashboardPage() {
                 <Input
                     type="search"
                     placeholder="Search entire bucket..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    value={globalSearch}
+                    onChange={(e) => setGlobalSearch(e.target.value)}
                 />
                 <Button type="submit">
                     <Search className="mr-2 h-4 w-4" /> Search
@@ -181,23 +236,75 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="relative mb-4">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                    type="search"
-                    placeholder="Filter current directory..."
-                    className="pl-8 sm:w-[300px]"
-                    value={localSearch}
-                    onChange={(e) => setLocalSearch(e.target.value)}
-                />
+            <div className="flex flex-wrap gap-4 items-center mb-4">
+                <div className="relative flex-grow sm:flex-grow-0">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        type="search"
+                        placeholder="Filter by name..."
+                        className="pl-8 sm:w-[250px] md:w-[300px]"
+                        value={localFilter}
+                        onChange={(e) => setLocalFilter(e.target.value)}
+                    />
+                </div>
+                 <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline">
+                        <ListFilter className="mr-2 h-4 w-4" />
+                        Sort by: {sortField === 'key' ? 'Name' : 'Last Modified'} ({sortDirection})
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                       <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+                        <DropdownMenuRadioGroup value={`${sortField}-${sortDirection}`} onValueChange={(v) => {
+                            const [field, dir] = v.split('-') as [SortField, SortDirection];
+                            setSortField(field);
+                            setSortDirection(dir);
+                        }}>
+                            <DropdownMenuRadioItem value="key-asc">Name (A-Z)</DropdownMenuRadioItem>
+                            <DropdownMenuRadioItem value="key-desc">Name (Z-A)</DropdownMenuRadioItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuRadioItem value="lastModified-desc">Last Modified (Newest)</DropdownMenuRadioItem>
+                            <DropdownMenuRadioItem value="lastModified-asc">Last Modified (Oldest)</DropdownMenuRadioItem>
+                        </DropdownMenuRadioGroup>
+                    </DropdownMenuContent>
+                </DropdownMenu>
             </div>
+            <Card>
+                <CardHeader className="py-3">
+                    <CardTitle className="text-base">Filter by Extension</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-wrap items-center gap-2">
+                    {PRESET_EXTENSIONS.map(ext => (
+                         <Button key={ext} variant={extensionFilter === ext ? "default" : "outline"} size="sm" onClick={() => handleExtensionFilter(ext)}>
+                            .{ext}
+                        </Button>
+                    ))}
+                    <form onSubmit={handleCustomExtensionSubmit} className="flex items-center gap-2">
+                         <Input 
+                            type="text" 
+                            placeholder="custom ext" 
+                            className="h-9 w-24"
+                            value={customExtension}
+                            onChange={(e) => setCustomExtension(e.target.value.replace('.', ''))}
+                          />
+                         <Button type="submit" size="sm" variant="secondary">Filter</Button>
+                    </form>
+                    {extensionFilter && (
+                         <Button variant="ghost" size="sm" onClick={() => { setExtensionFilter(''); setCustomExtension(''); }}>
+                            Clear filter
+                        </Button>
+                    )}
+                </CardContent>
+            </Card>
 
-            {filteredContents && (
-              <div className="space-y-4">
+
+            {sortedAndFilteredContents && (
+              <div className="space-y-4 mt-6">
                 <div>
-                  <h3 className="text-lg font-semibold mb-2 flex items-center"><Folder className="mr-2 h-5 w-5" /> Folders ({filteredContents.folders.length})</h3>
+                  <h3 className="text-lg font-semibold mb-2 flex items-center"><Folder className="mr-2 h-5 w-5" /> Folders ({sortedAndFilteredContents.folders.length})</h3>
                   <ul className="list-disc pl-5 space-y-1">
-                    {filteredContents.folders.map((folder, index) => (
+                    {sortedAndFilteredContents.folders.map((folder, index) => (
                       <li key={`folder-${index}`} className="font-mono">
                           <button onClick={() => handleFolderClick(folder)} className="text-primary hover:underline text-left">
                               {folder}
@@ -205,28 +312,29 @@ export default function DashboardPage() {
                       </li>
                     ))}
                   </ul>
-                  {filteredContents.folders.length === 0 && <p className="text-muted-foreground text-sm">No matching folders found.</p>}
+                  {sortedAndFilteredContents.folders.length === 0 && <p className="text-muted-foreground text-sm">No matching folders found.</p>}
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold mb-2 flex items-center"><File className="mr-2 h-5 w-5" /> Files ({filteredContents.files.length})</h3>
+                  <h3 className="text-lg font-semibold mb-2 flex items-center"><File className="mr-2 h-5 w-5" /> Files ({sortedAndFilteredContents.files.length})</h3>
                   <ul className="list-disc pl-5 space-y-1">
-                    {filteredContents.files.map((file, index) => {
-                      const fileUrl = new URL(file, getDisplayPath()).href;
+                    {sortedAndFilteredContents.files.map((file, index) => {
+                      const fileUrl = new URL(file.key, getDisplayPath()).href;
                       return (
-                          <li key={`file-${index}`} className="font-mono">
+                          <li key={`file-${index}`} className="font-mono flex justify-between items-center">
                               <a
                                   href={fileUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-primary hover:underline"
                               >
-                                  {file}
+                                  {file.key}
                               </a>
+                              <Badge variant="secondary">{new Date(file.lastModified).toLocaleDateString()}</Badge>
                           </li>
                       );
                     })}
                   </ul>
-                   {filteredContents.files.length === 0 && <p className="text-muted-foreground text-sm">No matching files found.</p>}
+                   {sortedAndFilteredContents.files.length === 0 && <p className="text-muted-foreground text-sm">No matching files found.</p>}
                 </div>
               </div>
             )}
@@ -236,3 +344,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
