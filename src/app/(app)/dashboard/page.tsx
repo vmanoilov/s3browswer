@@ -134,7 +134,7 @@ export default function DashboardPage() {
           <CardHeader>
             <CardTitle>Global Bucket Search</CardTitle>
             <CardDescription>Search for files across the entire bucket. This may take a moment for large buckets.</CardDescription>
-          </Header>
+          </CardHeader>
           <CardContent>
             <form onSubmit={handleGlobalSearch} className="flex w-full max-w-lg items-center space-x-2">
                 <Input
