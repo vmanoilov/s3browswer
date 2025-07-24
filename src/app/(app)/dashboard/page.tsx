@@ -36,9 +36,8 @@ export default function DashboardPage() {
     setLocalSearch(''); 
     try {
       const formattedUrl = bucketUrl.endsWith('/') ? bucketUrl : `${bucketUrl}/`;
-      // Encode path components to handle spaces and special characters
-      const encodedPath = path.split('/').map(encodeURIComponent).join('/');
-      const fullUrl = `${formattedUrl}${encodedPath}`;
+      // The path is now passed without encoding, the server proxy will handle it.
+      const fullUrl = `${formattedUrl}${path}`;
       
       const result = await browseS3Proxy({ bucketUrl: fullUrl });
       if (result.error) {
@@ -93,7 +92,8 @@ export default function DashboardPage() {
 
   const getDisplayPath = () => {
     try {
-      return decodeURIComponent(`${getBaseUrl()}${currentPath}`);
+      // The proxy flow now handles decoding, so we can just show the path
+      return `${getBaseUrl()}${currentPath}`;
     } catch (e) {
       return `${getBaseUrl()}${currentPath}`;
     }
