@@ -1,16 +1,17 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Folder, File, Loader2, ServerCrash, ArrowLeft, Search, ListFilter } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { browseS3Proxy } from '@/ai/flows/browse-s3-proxy';
+import { browseS3Proxy, type S3ProxyOutput } from '@/ai/flows/browse-s3-proxy';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
+import { type S3File as S3FileType } from '@/ai/flows/browse-s3-proxy';
 
 interface S3File {
   key: string;
@@ -30,11 +31,14 @@ const PRESET_EXTENSIONS = ['txt', 'doc', 'docx', 'xls', 'xlsx', 'pdf', 'zip'];
 export default function DashboardPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [bucketUrl, setBucketUrl] = useState('http://prod.land.s3.amazonaws.com/');
   const [currentPath, setCurrentPath] = useState('');
   const [contents, setContents] = useState<BucketContents | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [globalSearch, setGlobalSearch] = useState('');
+  
+  const [nextContinuationToken, setNextContinuationToken] = useState<string | undefined>(undefined);
   
   // Filtering and Sorting State
   const [localFilter, setLocalFilter] = useState('');
@@ -44,34 +48,56 @@ export default function DashboardPage() {
   const [customExtension, setCustomExtension] = useState('');
 
 
-  const handleBrowse = async (path = '') => {
+  const handleBrowse = useCallback(async (path = '', token?: string) => {
     if (!bucketUrl) {
       setError('Please enter a valid S3 bucket URL.');
       return;
     }
-    setIsLoading(true);
+
+    if (token) {
+        setIsLoadingMore(true);
+    } else {
+        setIsLoading(true);
+        setContents(null);
+        setLocalFilter('');
+        setExtensionFilter('');
+        setCustomExtension('');
+    }
     setError(null);
-    setContents(null);
-    setLocalFilter('');
-    setExtensionFilter('');
-    setCustomExtension('');
 
     try {
       const formattedUrl = bucketUrl.endsWith('/') ? bucketUrl : `${bucketUrl}/`;
       const fullUrl = `${formattedUrl}${path}`;
       
-      const result = await browseS3Proxy({ bucketUrl: fullUrl });
+      const result = await browseS3Proxy({ bucketUrl: fullUrl, continuationToken: token });
       if (result.error) {
           throw new Error(result.error);
       }
-      setContents(result);
+      
+      if (token) {
+        // Append results if we're loading more
+        setContents(prev => ({
+            files: [...(prev?.files || []), ...result.files],
+            folders: [...(prev?.folders || []), ...result.folders],
+        }));
+      } else {
+        // Otherwise, set new results
+        setContents({
+            files: result.files,
+            folders: result.folders,
+        });
+      }
+
+      setNextContinuationToken(result.nextContinuationToken);
       setCurrentPath(path);
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred.');
     } finally {
       setIsLoading(false);
+      setIsLoadingMore(false);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bucketUrl]);
 
   const handleFolderClick = (folder: string) => {
     const newPath = `${currentPath}${folder}`;
@@ -96,6 +122,12 @@ export default function DashboardPage() {
     router.push(`/search-results?url=${encodedBucketUrl}&q=${encodedSearchTerm}`);
   };
 
+  const handleLoadMore = () => {
+    if (nextContinuationToken) {
+        handleBrowse(currentPath, nextContinuationToken);
+    }
+  };
+
   useEffect(() => {
     handleBrowse();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -104,25 +136,6 @@ export default function DashboardPage() {
   const getBaseUrl = () => {
       return bucketUrl.endsWith('/') ? bucketUrl : `${bucketUrl}/`;
   };
-
-  const handleSortChange = (field: SortField) => {
-    if (field === sortField) {
-      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDirection('asc');
-    }
-  };
-  
-  const handleExtensionFilter = (ext: string) => {
-    setExtensionFilter(ext === extensionFilter ? '' : ext);
-    setCustomExtension('');
-  }
-
-  const handleCustomExtensionSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setExtensionFilter(customExtension);
-  }
 
   const sortedAndFilteredContents = contents ? {
       folders: contents.folders
@@ -258,7 +271,11 @@ export default function DashboardPage() {
                        <DropdownMenuLabel>Sort by</DropdownMenuLabel>
                         <DropdownMenuRadioGroup value={`${sortField}-${sortDirection}`} onValueChange={(v) => {
                             const [field, dir] = v.split('-') as [SortField, SortDirection];
-                            setSortField(field);
+                            if (field === 'key') {
+                                setSortField('key');
+                            } else {
+                                setSortField('lastModified');
+                            }
                             setSortDirection(dir);
                         }}>
                             <DropdownMenuRadioItem value="key-asc">Name (A-Z)</DropdownMenuRadioItem>
@@ -276,11 +293,11 @@ export default function DashboardPage() {
                 </CardHeader>
                 <CardContent className="flex flex-wrap items-center gap-2">
                     {PRESET_EXTENSIONS.map(ext => (
-                         <Button key={ext} variant={extensionFilter === ext ? "default" : "outline"} size="sm" onClick={() => handleExtensionFilter(ext)}>
+                         <Button key={ext} variant={extensionFilter === ext ? "default" : "outline"} size="sm" onClick={() => setExtensionFilter(ext === extensionFilter ? '' : ext)}>
                             .{ext}
                         </Button>
                     ))}
-                    <form onSubmit={handleCustomExtensionSubmit} className="flex items-center gap-2">
+                    <form onSubmit={(e) => { e.preventDefault(); setExtensionFilter(customExtension);}} className="flex items-center gap-2">
                          <Input 
                             type="text" 
                             placeholder="custom ext" 
@@ -338,10 +355,17 @@ export default function DashboardPage() {
                 </div>
               </div>
             )}
+             {nextContinuationToken && (
+                <div className="mt-6 flex justify-center">
+                    <Button onClick={handleLoadMore} disabled={isLoadingMore}>
+                        {isLoadingMore ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        {isLoadingMore ? 'Loading...' : 'Load More'}
+                    </Button>
+                </div>
+            )}
           </CardContent>
         </Card>
       )}
     </div>
   );
 }
-
