@@ -1,9 +1,8 @@
 
 'use server';
 
-import {ai} from '@/ai/genkit';
+import {ai, z} from '@/ai/genkit';
 import { discoverAwsBuckets } from '@/services/aws';
-import { z } from 'genkit/zod';
 import {
   FindOpenBucketsInputSchema as BaseInputSchema,
   FindOpenBucketsOutputSchema,

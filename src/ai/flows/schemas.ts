@@ -31,5 +31,5 @@ export const FindOpenBucketsInputSchema = z.object({
 });
 export type FindOpenBucketsInput = z.infer<typeof FindOpenBucketsInputSchema>;
 
-export const FindOpenBucketsOutputSchema = z.array(ScanUpdateSchema);
+export const FindOpenBucketsOutputSchema = z.array(BucketInfoSchema);
 export type FindOpenBucketsOutput = z.infer<typeof FindOpenBucketsOutputSchema>;
