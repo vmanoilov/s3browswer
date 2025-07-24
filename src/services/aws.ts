@@ -1,5 +1,5 @@
 
-import { S3Client, ListBucketsCommand, GetBucketAclCommand, GetPublicAccessBlockCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetBucketAclCommand, GetPublicAccessBlockCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
 import type { ScanUpdate } from '@/ai/flows/schemas';
 import type { Stream } from 'genkit/stream';
 
@@ -127,31 +127,8 @@ export const discoverAwsBuckets = async (keywords: string[] = [], stream: Stream
     const scannedNames = new Set<string>();
 
     stream({type: 'log', message: 'Starting AWS Scan...'});
-
-    // Step 1: Scan buckets from the authenticated user's account.
-    // This finds misconfigurations in buckets you own.
-    try {
-        stream({type: 'log', message: 'Checking for AWS credentials to scan owned buckets...'});
-        const { Buckets } = await s3Client.send(new ListBucketsCommand({}));
-        if (Buckets) {
-            stream({type: 'log', message: `Found ${Buckets.length} buckets in your account. Analyzing...`});
-            for (const bucket of Buckets) {
-                if (!bucket.Name || scannedNames.has(bucket.Name)) continue;
-                scannedNames.add(bucket.Name);
-                await scanBucket(bucket.Name, 'Authenticated', stream);
-            }
-        }
-    } catch (error: any) {
-        // Handle cases where credentials might be missing or invalid.
-        if (error.name === 'CredentialsProviderError') {
-             stream({type: 'log', message: "AWS credentials not found. Skipping authenticated scan. To scan buckets you own, please configure your environment for AWS access."});
-        } else {
-            stream({type: 'log', message: `Failed to list AWS buckets: ${error.message || error.name}`});
-            // Don't re-throw, allow the discovery scan to proceed.
-        }
-    }
     
-    // Step 2: Discover public buckets using keyword permutations.
+    // Discover public buckets using keyword permutations.
     // This finds "shadow IT" or unknown public buckets by guessing common names.
     if (keywords.length > 0) {
         stream({type: 'log', message: `Generating and testing bucket names from ${keywords.length} keywords...`});
