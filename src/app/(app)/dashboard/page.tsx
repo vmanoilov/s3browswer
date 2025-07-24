@@ -1,238 +1,112 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, Search, Terminal } from 'lucide-react';
-import { type BucketInfo } from '@/ai/flows/schemas';
-import { useToast } from '@/hooks/use-toast';
-import { Label } from '@/components/ui/label';
+import { Folder, File, Loader2, ServerCrash } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { browseS3Bucket } from '@/services/aws';
 
-const providers = [
-  { value: 'aws', label: 'AWS' },
-  { value: 'gcp', label: 'Google Cloud' },
-  { value: 'digitalocean', label: 'DigitalOcean' },
-  { value: 'dreamhost', label: 'DreamHost' },
-  { value: 'linode', label: 'Linode' },
-  { value: 'scaleway', label: 'Scaleway' },
-  { value: 'custom', label: 'Custom' },
-];
+interface BucketContents {
+  files: string[];
+  folders: string[];
+}
 
 export default function DashboardPage() {
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanId, setScanId] = useState<string | null>(null);
-  const [selectedProviders, setSelectedProviders] = useState<string[]>([]);
-  const [keywords, setKeywords] = useState('');
-  const [scanLog, setScanLog] = useState<string[]>([]);
-  const [foundBuckets, setFoundBuckets] = useState<BucketInfo[]>([]);
-  const [isLogOpen, setIsLogOpen] = useState(false);
-  const router = useRouter();
-  const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
+  const [bucketUrl, setBucketUrl] = useState('http://prod.land.s3.amazonaws.com/');
+  const [contents, setContents] = useState<BucketContents | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
-    if (isScanning && scanId) {
-      interval = setInterval(async () => {
-        try {
-          const res = await fetch(`/api/scan/status/${scanId}`);
-          if (!res.ok) {
-            // Stop polling if the server indicates the scan is done or an error occurred
-            setIsScanning(false);
-            return;
-          }
-          const data = await res.json();
-          setScanLog(data.log);
-          setFoundBuckets(data.results);
-          if (data.isDone) {
-            setIsScanning(false);
-          }
-        } catch (error) {
-          console.error("Failed to fetch scan status:", error);
-          setIsScanning(false); // Stop polling on error
-        }
-      }, 2000); // Poll every 2 seconds
-    }
-
-    // Cleanup on component unmount or when scanning stops
-    return () => {
-      if (interval) {
-        clearInterval(interval);
-      }
-    };
-  }, [isScanning, scanId]);
-  
-  const handleProviderChange = (providerValue: string) => {
-    setSelectedProviders(prev =>
-      prev.includes(providerValue)
-        ? prev.filter(p => p !== providerValue)
-        : [...prev, providerValue]
-    );
-  };
-
-  const handleScan = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (selectedProviders.length === 0) {
-      toast({
-        variant: "destructive",
-        title: "No Provider Selected",
-        description: "Please select at least one cloud provider to scan.",
-      });
+  const handleBrowse = async () => {
+    if (!bucketUrl) {
+      setError('Please enter a valid S3 bucket URL.');
       return;
     }
-
-    // Reset state for new scan
-    setScanLog([]);
-    setFoundBuckets([]);
-    setIsLogOpen(true);
-    setIsScanning(true);
-
+    setIsLoading(true);
+    setError(null);
+    setContents(null);
     try {
-      const response = await fetch('/api/scan/start', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          providers: selectedProviders,
-          keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to start scan.');
-      }
-
-      const { scanId } = await response.json();
-      setScanId(scanId);
-
-    } catch (error) {
-      console.error("Failed to start scan:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "An unexpected error occurred while starting the scan.",
-      });
-      setIsScanning(false);
-      setIsLogOpen(false);
+      const result = await browseS3Bucket(bucketUrl);
+      setContents(result);
+    } catch (err: any) {
+      setError(err.message || 'An unexpected error occurred.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleFinish = () => {
-    // When finishing, the scan might still be running in the background,
-    // but the user is navigated away. The results up to this point are saved.
-    const finalScanId = scanId || `scan_${Date.now()}`;
-    localStorage.setItem(finalScanId, JSON.stringify(foundBuckets));
-    setIsScanning(false);
-    setIsLogOpen(false);
-    router.push(`/scans/${finalScanId}`);
-  };
-
-  const isLoading = isScanning;
-
   return (
-    <>
-      <div className="space-y-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold font-headline">Dashboard</h1>
-            <p className="text-muted-foreground">Start a new scan or view recent activity.</p>
-          </div>
+    <div className="space-y-8">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold font-headline">S3 Bucket Browser</h1>
+          <p className="text-muted-foreground">Enter a public S3 bucket URL to list its files and folders.</p>
         </div>
-        <Card className="shadow-md">
-          <CardHeader>
-            <CardTitle>Discover Publicly Accessible Buckets</CardTitle>
-            <CardDescription>
-              Select one or more providers and add optional keywords to discover exposed storage resources.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleScan} className="space-y-6">
-              <div className="space-y-4">
-                <div>
-                  <Label>Cloud Providers</Label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-2">
-                    {providers.map(p => (
-                      <div key={p.value} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`provider-${p.value}`}
-                          checked={selectedProviders.includes(p.value)}
-                          onCheckedChange={() => handleProviderChange(p.value)}
-                          disabled={isLoading}
-                        />
-                        <Label htmlFor={`provider-${p.value}`} className="font-normal">{p.label}</Label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="keywords">Discovery Keywords (Optional)</Label>
-                  <Input
-                    id="keywords"
-                    placeholder="e.g., my-company, assets, backup"
-                    value={keywords}
-                    onChange={(e) => setKeywords(e.target.value)}
-                    disabled={isLoading}
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">Comma-separated keywords to search for public buckets.</p>
-                </div>
-              </div>
-              <Button type="submit" disabled={isLoading || selectedProviders.length === 0} className="w-full sm:w-auto">
-                {isLoading ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Search className="mr-2 h-4 w-4" />
-                )}
-                {isLoading ? 'Scanning...' : 'Start Discovery Scan'}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-md">
-          <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
-            <CardDescription>A summary of recent scan activities.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground">No recent scans to display. Start a new scan to see results here.</p>
-          </CardContent>
-        </Card>
       </div>
+      <Card className="shadow-md">
+        <CardHeader>
+          <CardTitle>Browse S3 Bucket</CardTitle>
+          <CardDescription>
+            Enter the full URL of a publicly listable S3 bucket.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex w-full max-w-lg items-center space-x-2">
+            <Input
+              type="url"
+              placeholder="e.g., http://prod.land.s3.amazonaws.com/"
+              value={bucketUrl}
+              onChange={(e) => setBucketUrl(e.target.value)}
+              disabled={isLoading}
+            />
+            <Button onClick={handleBrowse} disabled={isLoading}>
+              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {isLoading ? 'Browsing...' : 'Browse'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
-      <Dialog open={isLogOpen} onOpenChange={setIsLogOpen}>
-        <DialogContent className="sm:max-w-4xl h-[70vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Real-time Scan Progress</DialogTitle>
-          </DialogHeader>
-          <ScrollArea className="flex-grow bg-muted/50 rounded-md p-4">
-            <div className="font-mono text-sm">
-              {scanLog.map((log, index) => (
-                <div key={index} className="flex items-center">
-                  <Terminal className="h-4 w-4 mr-2 shrink-0" />
-                  <p className="whitespace-pre-wrap break-all">{log}</p>
-                </div>
-              ))}
-              {isLoading && <Loader2 className="h-5 w-5 animate-spin mt-4" />}
-               {!isLoading && scanId && (
-                <div className="flex items-center mt-4 text-green-600">
-                  <Terminal className="h-4 w-4 mr-2 shrink-0" />
-                  <p>Scan complete.</p>
-                </div>
-              )}
+      {error && (
+        <Alert variant="destructive">
+          <ServerCrash className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {contents && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Bucket Contents</CardTitle>
+            <CardDescription>Files and folders at {bucketUrl}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-lg font-semibold mb-2 flex items-center"><Folder className="mr-2 h-5 w-5" /> Folders</h3>
+                <ul className="list-disc pl-5 space-y-1">
+                  {contents.folders.map((folder, index) => (
+                    <li key={`folder-${index}`} className="font-mono">{folder}</li>
+                  ))}
+                </ul>
+                {contents.folders.length === 0 && <p className="text-muted-foreground text-sm">No folders found.</p>}
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold mb-2 flex items-center"><File className="mr-2 h-5 w-5" /> Files</h3>
+                <ul className="list-disc pl-5 space-y-1">
+                  {contents.files.map((file, index) => (
+                    <li key={`file-${index}`} className="font-mono">{file}</li>
+                  ))}
+                </ul>
+                 {contents.files.length === 0 && <p className="text-muted-foreground text-sm">No files found.</p>}
+              </div>
             </div>
-          </ScrollArea>
-           <div className="flex justify-end pt-4">
-              <Button onClick={handleFinish} disabled={isLoading}>
-                {isLoading ? 'Finish Later' : 'View Results'}
-              </Button>
-            </div>
-        </DialogContent>
-      </Dialog>
-    </>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }
