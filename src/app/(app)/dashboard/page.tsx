@@ -33,10 +33,9 @@ export default function DashboardPage() {
     setIsLoading(true);
     setError(null);
     setContents(null);
-    setLocalSearch(''); 
+    setLocalSearch('');
     try {
       const formattedUrl = bucketUrl.endsWith('/') ? bucketUrl : `${bucketUrl}/`;
-      // The path is now passed without encoding, the server proxy will handle it.
       const fullUrl = `${formattedUrl}${path}`;
       
       const result = await browseS3Proxy({ bucketUrl: fullUrl });
@@ -92,8 +91,7 @@ export default function DashboardPage() {
 
   const getDisplayPath = () => {
     try {
-      // The proxy flow now handles decoding, so we can just show the path
-      return `${getBaseUrl()}${currentPath}`;
+      return `${getBaseUrl()}${decodeURIComponent(currentPath)}`;
     } catch (e) {
       return `${getBaseUrl()}${currentPath}`;
     }
@@ -213,12 +211,12 @@ export default function DashboardPage() {
                   <h3 className="text-lg font-semibold mb-2 flex items-center"><File className="mr-2 h-5 w-5" /> Files ({filteredContents.files.length})</h3>
                   <ul className="list-disc pl-5 space-y-1">
                     {filteredContents.files.map((file, index) => {
-                      const fileUrl = new URL(encodeURIComponent(file), getDisplayPath()).href;
+                      const fileUrl = new URL(file, getDisplayPath()).href;
                       return (
                           <li key={`file-${index}`} className="font-mono">
-                              <a 
-                                  href={fileUrl} 
-                                  target="_blank" 
+                              <a
+                                  href={fileUrl}
+                                  target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-primary hover:underline"
                               >
