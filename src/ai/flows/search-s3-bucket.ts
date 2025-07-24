@@ -34,30 +34,54 @@ const searchS3BucketFlow = ai.defineFlow(
   },
   async ({ bucketUrl, searchTerm }) => {
     try {
-      const url = new URL(bucketUrl);
-      const listUrl = `${url.origin}/`; // Start from the root
+        const url = new URL(bucketUrl);
+        const baseUrl = `${url.origin}/`;
+        let allFiles: string[] = [];
+        let isTruncated = true;
+        let continuationToken: string | null = null;
 
-      const response = await fetch(listUrl);
+        while (isTruncated) {
+            let listUrl = `${baseUrl}?list-type=2`;
+            if (continuationToken) {
+                listUrl += `&continuation-token=${encodeURIComponent(continuationToken)}`;
+            }
 
-      if (!response.ok) {
-        return { results: [], error: `Failed to fetch bucket content: ${response.statusText}` };
-      }
+            const response = await fetch(listUrl);
 
-      const xmlText = await response.text();
-      
-      const allFiles = Array.from(xmlText.matchAll(/<Key>(.*?)<\/Key>/g))
-        .map(m => m[1])
-        .filter(key => !key.endsWith('/')); // Exclude directories
+            if (!response.ok) {
+                if (allFiles.length > 0) break; // If we already have some files, return them
+                return { results: [], error: `Failed to fetch bucket content: ${response.statusText}` };
+            }
 
-      const searchResults = allFiles.filter(file => file.toLowerCase().includes(searchTerm.toLowerCase()));
+            const xmlText = await response.text();
 
-      return {
-        results: searchResults,
-      };
+            const pageFiles = Array.from(xmlText.matchAll(/<Key>(.*?)<\/Key>/g))
+                .map(m => m[1])
+                .filter(key => !key.endsWith('/')); // Exclude directories
+
+            allFiles.push(...pageFiles);
+
+            const isTruncatedMatch = xmlText.match(/<IsTruncated>(true|false)<\/IsTruncated>/);
+            isTruncated = isTruncatedMatch ? isTruncatedMatch[1] === 'true' : false;
+
+            if (isTruncated) {
+                const tokenMatch = xmlText.match(/<NextContinuationToken>(.*?)<\/NextContinuationToken>/);
+                continuationToken = tokenMatch ? tokenMatch[1] : null;
+                if (!continuationToken) {
+                    isTruncated = false; // Stop if there's no token
+                }
+            }
+        }
+
+        const searchResults = allFiles.filter(file => file.toLowerCase().includes(searchTerm.toLowerCase()));
+
+        return {
+            results: searchResults,
+        };
 
     } catch (error: any) {
-      console.error(`Error in searchS3BucketFlow: ${error.message}`);
-      return { results: [], error: 'An unexpected error occurred while searching the S3 bucket.' };
+        console.error(`Error in searchS3BucketFlow: ${error.message}`);
+        return { results: [], error: 'An unexpected error occurred while searching the S3 bucket.' };
     }
   }
 );
