@@ -32,15 +32,16 @@ const generateBucketPermutations = (keywords: string[]): string[] => {
 
 // Main function to discover open buckets in an AWS environment.
 export const discoverAwsBuckets = async (keywords: string[] = [], stream: Stream<ScanUpdate>): Promise<void> => {
-    const s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-1', credentials: { accessKeyId: " ", secretAccessKey: " " } });
+    // Initialize the S3 client for anonymous access.
+    // Providing no credentials ensures the SDK operates in public mode.
+    const s3Client = new S3Client({ region: 'us-east-1' });
     
-    stream({type: 'log', message: 'Starting AWS Scan...'});
+    stream({type: 'log', message: 'Starting AWS public discovery scan...'});
     
     // Discover public buckets using keyword permutations.
     if (keywords.length > 0) {
-        stream({type: 'log', message: `Generating and testing bucket names from ${keywords.length} keywords...`});
         const potentialBuckets = generateBucketPermutations(keywords);
-        stream({type: 'log', message: `Generated ${potentialBuckets.length} potential names. Starting discovery...`});
+        stream({type: 'log', message: `Generated ${potentialBuckets.length} potential names. Testing buckets...`});
         
         for(const bucketName of potentialBuckets) {
             try {
