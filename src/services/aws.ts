@@ -1,7 +1,6 @@
 
 import { S3Client, HeadBucketCommand } from '@aws-sdk/client-s3';
 import type { ScanUpdate } from '@/ai/flows/schemas';
-import type { Stream } from 'genkit/stream';
 
 // Generates permutations of keywords to guess bucket names. This is a common
 // technique for discovering public buckets that are not part of an authenticated account.
@@ -31,9 +30,7 @@ const generateBucketPermutations = (keywords: string[]): string[] => {
 
 
 // Main function to discover open buckets in an AWS environment.
-export const discoverAwsBuckets = async (keywords: string[] = [], stream: Stream<ScanUpdate>): Promise<void> => {
-    // Initialize the S3 client for anonymous access.
-    // Providing no credentials ensures the SDK operates in public mode.
+export const discoverAwsBuckets = async (keywords: string[] = [], stream: (update: ScanUpdate) => void): Promise<void> => {
     const s3Client = new S3Client({ region: 'us-east-1' });
     
     stream({type: 'log', message: 'Starting AWS public discovery scan...'});

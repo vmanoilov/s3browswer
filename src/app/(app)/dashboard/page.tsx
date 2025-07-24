@@ -1,20 +1,17 @@
-
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, Search, Terminal } from 'lucide-react';
-import { findOpenBucketsFlow } from '@/ai/flows/find-open-buckets';
-import { type BucketInfo, type ScanUpdate } from '@/ai/flows/schemas';
+import { type BucketInfo } from '@/ai/flows/schemas';
 import { useToast } from '@/hooks/use-toast';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { runFlow } from '@genkit-ai/next/client';
 
 const providers = [
   { value: 'aws', label: 'AWS' },
@@ -27,7 +24,8 @@ const providers = [
 ];
 
 export default function DashboardPage() {
-  const [isLoading, setIsLoading] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanId, setScanId] = useState<string | null>(null);
   const [selectedProviders, setSelectedProviders] = useState<string[]>([]);
   const [keywords, setKeywords] = useState('');
   const [scanLog, setScanLog] = useState<string[]>([]);
@@ -36,6 +34,38 @@ export default function DashboardPage() {
   const router = useRouter();
   const { toast } = useToast();
 
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    if (isScanning && scanId) {
+      interval = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/scan/status/${scanId}`);
+          if (!res.ok) {
+            // Stop polling if the server indicates the scan is done or an error occurred
+            setIsScanning(false);
+            return;
+          }
+          const data = await res.json();
+          setScanLog(data.log);
+          setFoundBuckets(data.results);
+          if (data.isDone) {
+            setIsScanning(false);
+          }
+        } catch (error) {
+          console.error("Failed to fetch scan status:", error);
+          setIsScanning(false); // Stop polling on error
+        }
+      }, 2000); // Poll every 2 seconds
+    }
+
+    // Cleanup on component unmount or when scanning stops
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [isScanning, scanId]);
+  
   const handleProviderChange = (providerValue: string) => {
     setSelectedProviders(prev =>
       prev.includes(providerValue)
@@ -55,47 +85,54 @@ export default function DashboardPage() {
       return;
     }
 
-    setIsLoading(true);
+    // Reset state for new scan
     setScanLog([]);
     setFoundBuckets([]);
     setIsLogOpen(true);
+    setIsScanning(true);
 
     try {
-      const { stream, response } = runFlow(findOpenBucketsFlow, {
-        providers: selectedProviders,
-        keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
+      const response = await fetch('/api/scan/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          providers: selectedProviders,
+          keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
+        }),
       });
 
-      for await (const update of stream) {
-        if (update.type === 'log') {
-          setScanLog(prev => [...prev, `[LOG] ${update.message}`]);
-        } else if (update.type === 'result') {
-          setScanLog(prev => [...prev, `[FOUND] ${update.bucket.provider}: ${update.bucket.name} - Status: ${update.bucket.status}`]);
-          setFoundBuckets(prev => [...prev, update.bucket]);
-        }
+      if (!response.ok) {
+        throw new Error('Failed to start scan.');
       }
-      
-      await response;
+
+      const { scanId } = await response.json();
+      setScanId(scanId);
 
     } catch (error) {
-      console.error("Failed to scan for open buckets:", error);
+      console.error("Failed to start scan:", error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: "An unexpected error occurred during the scan.",
+        description: "An unexpected error occurred while starting the scan.",
       });
-    } finally {
-        setIsLoading(false);
+      setIsScanning(false);
+      setIsLogOpen(false);
     }
   };
 
   const handleFinish = () => {
-    const scanId = `scan_${Date.now()}`;
-    localStorage.setItem(scanId, JSON.stringify(foundBuckets));
-    setIsLoading(false);
+    // When finishing, the scan might still be running in the background,
+    // but the user is navigated away. The results up to this point are saved.
+    const finalScanId = scanId || `scan_${Date.now()}`;
+    localStorage.setItem(finalScanId, JSON.stringify(foundBuckets));
+    setIsScanning(false);
     setIsLogOpen(false);
-    router.push(`/scans/${scanId}`);
+    router.push(`/scans/${finalScanId}`);
   };
+
+  const isLoading = isScanning;
 
   return (
     <>
@@ -181,6 +218,12 @@ export default function DashboardPage() {
                 </div>
               ))}
               {isLoading && <Loader2 className="h-5 w-5 animate-spin mt-4" />}
+               {!isLoading && scanId && (
+                <div className="flex items-center mt-4 text-green-600">
+                  <Terminal className="h-4 w-4 mr-2 shrink-0" />
+                  <p>Scan complete.</p>
+                </div>
+              )}
             </div>
           </ScrollArea>
            <div className="flex justify-end pt-4">

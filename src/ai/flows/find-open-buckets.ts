@@ -1,34 +1,52 @@
 
 'use server';
 
-/**
- * @fileOverview A Genkit flow to find publicly accessible cloud storage resources.
- *
- * - findOpenBucketsFlow - A flow that returns a list of open storage buckets for a given provider.
- */
-
 import {ai} from '@/ai/genkit';
 import { discoverAwsBuckets } from '@/services/aws';
-import { Stream } from 'genkit/stream';
+import { z } from 'genkit/zod';
 import {
-  FindOpenBucketsInputSchema,
+  FindOpenBucketsInputSchema as BaseInputSchema,
   FindOpenBucketsOutputSchema,
   ScanUpdateSchema,
-  type ScanUpdate
 } from './schemas';
+import { scanStore } from '@/lib/scan-store';
+
+const findOpenBucketsInputSchema = BaseInputSchema.extend({
+  scanId: z.string(),
+});
+
+type FindOpenBucketsInput = z.infer<typeof findOpenBucketsInputSchema>;
+
+// Helper to add updates to the shared store
+const updateScanStore = (scanId: string, update: z.infer<typeof ScanUpdateSchema>) => {
+  const current = scanStore.get(scanId);
+  if (current) {
+    if (update.type === 'log') {
+      current.log.push(`[LOG] ${update.message}`);
+    } else if (update.type === 'result') {
+      current.log.push(`[FOUND] ${update.bucket.provider}: ${update.bucket.name} - Status: ${update.bucket.status}`);
+      current.results.push(update.bucket);
+    }
+    scanStore.set(scanId, { ...current });
+  }
+};
 
 
 // This function orchestrates which discovery process to run based on the provider.
 const performDiscovery = async (
     provider: string,
     keywords: string[] | undefined,
-    stream: Stream<ScanUpdate>
+    scanId: string
   ) => {
   const providerKey = provider.toLowerCase().replace(/\s/g, '');
 
+  const streamUpdate = (update: z.infer<typeof ScanUpdateSchema>) => {
+    updateScanStore(scanId, update);
+  };
+  
   switch(providerKey) {
       case 'aws':
-        await discoverAwsBuckets(keywords, stream);
+        await discoverAwsBuckets(keywords, streamUpdate);
         break;
       // NOTE: You would add cases for other providers here by creating new service files.
       // e.g., import { discoverGcpBuckets } from '@/services/gcp';
@@ -39,10 +57,10 @@ const performDiscovery = async (
       case 'scaleway':
       case 'custom':
          // Placeholder for other providers
-         stream({type: 'log', message: `Scanning for provider '${provider}' is not yet implemented.`});
+         streamUpdate({type: 'log', message: `Scanning for provider '${provider}' is not yet implemented.`});
          break;
       default:
-        stream({type: 'log', message: `Unknown provider: ${provider}`});
+        streamUpdate({type: 'log', message: `Unknown provider: ${provider}`});
         break;
   }
 };
@@ -51,18 +69,24 @@ const performDiscovery = async (
 export const findOpenBucketsFlow = ai.defineFlow(
   {
     name: 'findOpenBucketsFlow',
-    inputSchema: FindOpenBucketsInputSchema,
+    inputSchema: findOpenBucketsInputSchema,
     outputSchema: FindOpenBucketsOutputSchema,
-    streamSchema: ScanUpdateSchema,
   },
-  async ({ providers, keywords }, stream) => {
+  async ({ providers, keywords, scanId }) => {
     
-    stream({type: 'log', message: `Starting scan for ${providers.join(', ')}...`});
+    updateScanStore(scanId, {type: 'log', message: `Starting scan for ${providers.join(', ')}...`});
 
-    const discoveryPromises = providers.map(provider => performDiscovery(provider, keywords, stream));
+    const discoveryPromises = providers.map(provider => performDiscovery(provider, keywords, scanId));
     await Promise.all(discoveryPromises);
 
-    stream({type: 'log', message: 'Scan completed.'});
-    return [];
+    updateScanStore(scanId, {type: 'log', message: 'Scan completed.'});
+    
+    // Mark the scan as done in the store.
+    const finalState = scanStore.get(scanId);
+    if (finalState) {
+        scanStore.set(scanId, { ...finalState, isDone: true });
+    }
+
+    return finalState?.results || [];
   }
 );
