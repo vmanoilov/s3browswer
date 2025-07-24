@@ -3,11 +3,6 @@ import { S3Client, GetBucketAclCommand, GetPublicAccessBlockCommand, HeadBucketC
 import type { ScanUpdate } from '@/ai/flows/schemas';
 import type { Stream } from 'genkit/stream';
 
-// Note on Credentials: This service uses the AWS SDK, which will automatically
-// use credentials from environment variables (AWS_ACCESS_KEY_ID, etc.),
-// an IAM role if running on EC2/ECS, or the ~/.aws/credentials file.
-const s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
-
 // Helper function to check if a bucket is public based on its ACL grants.
 const isBucketPublicByAcl = (grants: any[]): { public: boolean, details: string[] } => {
     const publicIndicators: string[] = [];
@@ -56,7 +51,7 @@ const generateBucketPermutations = (keywords: string[]): string[] => {
 
 
 // Scans a specific, named bucket to determine its public status
-const scanBucket = async (bucketName: string, source: 'Authenticated' | 'Discovered', stream: Stream<ScanUpdate>): Promise<void> => {
+const scanBucket = async (s3Client: S3Client, bucketName: string, source: 'Discovered', stream: Stream<ScanUpdate>): Promise<void> => {
      try {
         // 1. Check Bucket ACL
         const { Grants } = await s3Client.send(new GetBucketAclCommand({ Bucket: bucketName }));
@@ -124,6 +119,11 @@ const scanBucket = async (bucketName: string, source: 'Authenticated' | 'Discove
 
 // Main function to discover open buckets in an AWS environment.
 export const discoverAwsBuckets = async (keywords: string[] = [], stream: Stream<ScanUpdate>): Promise<void> => {
+    // Note on Credentials: This service uses the AWS SDK, which will automatically
+    // use credentials from environment variables (AWS_ACCESS_KEY_ID, etc.),
+    // an IAM role if running on EC2/ECS, or the ~/.aws/credentials file.
+    // Initializing the client here ensures it's fresh for every scan.
+    const s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
     const scannedNames = new Set<string>();
 
     stream({type: 'log', message: 'Starting AWS Scan...'});
@@ -146,7 +146,7 @@ export const discoverAwsBuckets = async (keywords: string[] = [], stream: Stream
 
                 // If HeadBucket succeeds, the bucket exists. Now we can run our detailed scan
                 // to check if it's actually public.
-                await scanBucket(bucketName, 'Discovered', stream);
+                await scanBucket(s3Client, bucketName, 'Discovered', stream);
             } catch(error: any) {
                 // 'NotFound' (404) or 'Forbidden' (403) are the expected errors for
                 // bucket names that don't exist or are private. We can safely ignore these.
