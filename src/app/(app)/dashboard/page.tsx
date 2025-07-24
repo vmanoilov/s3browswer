@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Folder, File, Loader2, ServerCrash } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { browseS3Bucket } from '@/services/aws';
+import { browseS3Proxy } from '@/ai/flows/browse-s3-proxy';
 
 interface BucketContents {
   files: string[];
@@ -28,7 +28,10 @@ export default function DashboardPage() {
     setError(null);
     setContents(null);
     try {
-      const result = await browseS3Bucket(bucketUrl);
+      const result = await browseS3Proxy({ bucketUrl });
+      if (result.error) {
+          throw new Error(result.error);
+      }
       setContents(result);
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred.');
