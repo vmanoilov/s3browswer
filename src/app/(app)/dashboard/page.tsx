@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -28,7 +29,9 @@ export default function DashboardPage() {
     setError(null);
     setContents(null);
     try {
-      const result = await browseS3Proxy({ bucketUrl });
+      // Ensure the URL ends with a slash for proper joining
+      const formattedUrl = bucketUrl.endsWith('/') ? bucketUrl : `${bucketUrl}/`;
+      const result = await browseS3Proxy({ bucketUrl: formattedUrl });
       if (result.error) {
           throw new Error(result.error);
       }
@@ -63,6 +66,7 @@ export default function DashboardPage() {
               value={bucketUrl}
               onChange={(e) => setBucketUrl(e.target.value)}
               disabled={isLoading}
+              onKeyDown={(e) => e.key === 'Enter' && handleBrowse()}
             />
             <Button onClick={handleBrowse} disabled={isLoading}>
               {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
@@ -100,9 +104,21 @@ export default function DashboardPage() {
               <div>
                 <h3 className="text-lg font-semibold mb-2 flex items-center"><File className="mr-2 h-5 w-5" /> Files</h3>
                 <ul className="list-disc pl-5 space-y-1">
-                  {contents.files.map((file, index) => (
-                    <li key={`file-${index}`} className="font-mono">{file}</li>
-                  ))}
+                  {contents.files.map((file, index) => {
+                    const fileUrl = new URL(file, bucketUrl).href;
+                    return (
+                        <li key={`file-${index}`} className="font-mono">
+                            <a 
+                                href={fileUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline"
+                            >
+                                {file}
+                            </a>
+                        </li>
+                    );
+                  })}
                 </ul>
                  {contents.files.length === 0 && <p className="text-muted-foreground text-sm">No files found.</p>}
               </div>
