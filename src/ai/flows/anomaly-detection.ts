@@ -10,7 +10,7 @@
  */
 
 import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import {z} from 'zod';
 
 const AnomalyDetectionInputSchema = z.object({
   bucketName: z.string().describe('The name of the S3 bucket.'),

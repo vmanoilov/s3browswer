@@ -3,7 +3,7 @@
 
 import {ai} from '@/ai/genkit';
 import { discoverAwsBuckets } from '@/services/aws';
-import { z } from 'genkit';
+import { z } from 'zod';
 import {
   FindOpenBucketsInputSchema as BaseInputSchema,
   FindOpenBucketsOutputSchema,

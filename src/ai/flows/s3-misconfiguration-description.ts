@@ -8,7 +8,7 @@
  */
 
 import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
+import {z} from 'zod';
 
 const S3MisconfigurationDescriptionInputSchema = z.object({
   misconfigurationDetails: z.string().describe('Detailed information about the S3 bucket misconfiguration.'),

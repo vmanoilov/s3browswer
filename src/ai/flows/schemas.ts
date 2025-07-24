@@ -1,4 +1,4 @@
-import {z} from 'genkit';
+import {z} from 'zod';
 
 export const BucketInfoSchema = z.object({
   id: z.string().describe('A unique identifier for the bucket scan result.'),
