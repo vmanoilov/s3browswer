@@ -36,7 +36,9 @@ export default function DashboardPage() {
     setLocalSearch(''); 
     try {
       const formattedUrl = bucketUrl.endsWith('/') ? bucketUrl : `${bucketUrl}/`;
-      const fullUrl = `${formattedUrl}${path}`;
+      // Encode path components to handle spaces and special characters
+      const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+      const fullUrl = `${formattedUrl}${encodedPath}`;
       
       const result = await browseS3Proxy({ bucketUrl: fullUrl });
       if (result.error) {
@@ -89,6 +91,14 @@ export default function DashboardPage() {
       files: contents.files.filter(f => f.toLowerCase().includes(localSearch.toLowerCase())),
   } : null;
 
+  const getDisplayPath = () => {
+    try {
+      return decodeURIComponent(`${getBaseUrl()}${currentPath}`);
+    } catch (e) {
+      return `${getBaseUrl()}${currentPath}`;
+    }
+  }
+
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
@@ -126,7 +136,7 @@ export default function DashboardPage() {
           <CardHeader>
             <CardTitle>Global Bucket Search</CardTitle>
             <CardDescription>Search for files across the entire bucket. This may take a moment for large buckets.</CardDescription>
-          </CardHeader>
+          </Header>
           <CardContent>
             <form onSubmit={handleGlobalSearch} className="flex w-full max-w-lg items-center space-x-2">
                 <Input
@@ -168,7 +178,7 @@ export default function DashboardPage() {
               )}
               <div>
                 <CardTitle>Current Directory Contents</CardTitle>
-                <CardDescription className="font-mono">{`${getBaseUrl()}${currentPath}`}</CardDescription>
+                <CardDescription className="font-mono">{getDisplayPath()}</CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -203,7 +213,7 @@ export default function DashboardPage() {
                   <h3 className="text-lg font-semibold mb-2 flex items-center"><File className="mr-2 h-5 w-5" /> Files ({filteredContents.files.length})</h3>
                   <ul className="list-disc pl-5 space-y-1">
                     {filteredContents.files.map((file, index) => {
-                      const fileUrl = new URL(`${currentPath}${file}`, getBaseUrl()).href;
+                      const fileUrl = new URL(encodeURIComponent(file), getDisplayPath()).href;
                       return (
                           <li key={`file-${index}`} className="font-mono">
                               <a 

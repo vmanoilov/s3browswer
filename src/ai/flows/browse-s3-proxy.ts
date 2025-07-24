@@ -13,7 +13,7 @@ import {ai} from '@/ai/genkit';
 import {z} from 'zod';
 
 const S3ProxyInputSchema = z.object({
-  bucketUrl: z.string().url().describe('The public URL of the S3 bucket to browse.'),
+  bucketUrl: z.string().describe('The public URL of the S3 bucket to browse.'),
 });
 export type S3ProxyInput = z.infer<typeof S3ProxyInputSchema>;
 
@@ -38,7 +38,7 @@ const browseS3ProxyFlow = ai.defineFlow(
   async ({ bucketUrl }) => {
     try {
       const url = new URL(bucketUrl);
-      const prefix = url.pathname.substring(1); // S3 path without leading '/'
+      const prefix = decodeURIComponent(url.pathname.substring(1)); // S3 path without leading '/'
 
       // For directory listing, S3 expects a URL parameter `delimiter=/`
       // and optionally a `prefix`
