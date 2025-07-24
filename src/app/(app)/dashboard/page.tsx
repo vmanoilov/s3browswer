@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Folder, File, Loader2, ServerCrash, ArrowLeft, Search, ListFilter } from 'lucide-react';
+import { Folder, File, Loader2, ServerCrash, ArrowLeft, Search, ListFilter, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { browseS3Proxy, type S3ProxyOutput } from '@/ai/flows/browse-s3-proxy';
@@ -31,13 +31,15 @@ const PRESET_EXTENSIONS = ['txt', 'doc', 'docx', 'xls', 'xlsx', 'pdf', 'zip'];
 export default function DashboardPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [bucketUrl, setBucketUrl] = useState('http://prod.land.s3.amazonaws.com/');
   const [currentPath, setCurrentPath] = useState('');
   const [contents, setContents] = useState<BucketContents | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [globalSearch, setGlobalSearch] = useState('');
   
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [continuationTokens, setContinuationTokens] = useState<(string | undefined)[]>([undefined]); // index 0 is for page 1 (no token)
   const [nextContinuationToken, setNextContinuationToken] = useState<string | undefined>(undefined);
   
   // Filtering and Sorting State
@@ -47,23 +49,26 @@ export default function DashboardPage() {
   const [extensionFilter, setExtensionFilter] = useState('');
   const [customExtension, setCustomExtension] = useState('');
 
+  const resetPagination = () => {
+    setCurrentPage(1);
+    setContinuationTokens([undefined]);
+    setNextContinuationToken(undefined);
+  }
 
-  const handleBrowse = useCallback(async (path = '', token?: string) => {
+  const handleBrowse = useCallback(async (path: string, token?: string) => {
     if (!bucketUrl) {
       setError('Please enter a valid S3 bucket URL.');
       return;
     }
 
-    if (token) {
-        setIsLoadingMore(true);
-    } else {
-        setIsLoading(true);
-        setContents(null);
+    setIsLoading(true);
+    setContents(null);
+    setError(null);
+    if (!token) { // only reset filters/sort on new directory browse, not on pagination
         setLocalFilter('');
         setExtensionFilter('');
         setCustomExtension('');
     }
-    setError(null);
 
     try {
       const formattedUrl = bucketUrl.endsWith('/') ? bucketUrl : `${bucketUrl}/`;
@@ -74,43 +79,42 @@ export default function DashboardPage() {
           throw new Error(result.error);
       }
       
-      if (token) {
-        // Append results if we're loading more
-        setContents(prev => ({
-            files: [...(prev?.files || []), ...result.files],
-            folders: [...(prev?.folders || []), ...result.folders],
-        }));
-      } else {
-        // Otherwise, set new results
-        setContents({
-            files: result.files,
-            folders: result.folders,
-        });
-      }
+      setContents({
+          files: result.files,
+          folders: result.folders,
+      });
 
       setNextContinuationToken(result.nextContinuationToken);
+
+      // If we got a next token and it's not already in our list, add it.
+      if (result.nextContinuationToken && !continuationTokens.includes(result.nextContinuationToken)) {
+         setContinuationTokens(prev => [...prev, result.nextContinuationToken]);
+      }
       setCurrentPath(path);
+
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred.');
     } finally {
       setIsLoading(false);
-      setIsLoadingMore(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bucketUrl]);
 
   const handleFolderClick = (folder: string) => {
     const newPath = `${currentPath}${folder}`;
+    resetPagination();
     handleBrowse(newPath);
   };
   
   const handleBackClick = () => {
     if (!currentPath) return;
     const newPath = currentPath.slice(0, currentPath.lastIndexOf('/', currentPath.length - 2) + 1);
+    resetPagination();
     handleBrowse(newPath);
   };
 
   const handleUrlSubmit = () => {
+      resetPagination();
       handleBrowse('');
   };
 
@@ -122,14 +126,24 @@ export default function DashboardPage() {
     router.push(`/search-results?url=${encodedBucketUrl}&q=${encodedSearchTerm}`);
   };
 
-  const handleLoadMore = () => {
+  const handleNextPage = () => {
     if (nextContinuationToken) {
+        setCurrentPage(prev => prev + 1);
         handleBrowse(currentPath, nextContinuationToken);
     }
   };
 
+  const handlePrevPage = () => {
+    if (currentPage > 1) {
+      const newPage = currentPage - 1;
+      setCurrentPage(newPage);
+      const prevToken = continuationTokens[newPage - 1]; // Array is 0-indexed
+      handleBrowse(currentPath, prevToken);
+    }
+  };
+
   useEffect(() => {
-    handleBrowse();
+    handleBrowse('');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -355,17 +369,20 @@ export default function DashboardPage() {
                 </div>
               </div>
             )}
-             {nextContinuationToken && (
-                <div className="mt-6 flex justify-center">
-                    <Button onClick={handleLoadMore} disabled={isLoadingMore}>
-                        {isLoadingMore ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                        {isLoadingMore ? 'Loading...' : 'Load More'}
-                    </Button>
-                </div>
-            )}
+            <div className="mt-6 flex justify-center items-center gap-4">
+                <Button onClick={handlePrevPage} disabled={currentPage === 1 || isLoading}>
+                    <ChevronLeft className="mr-2 h-4 w-4" /> Previous
+                </Button>
+                <span className="text-sm font-medium">Page {currentPage}</span>
+                <Button onClick={handleNextPage} disabled={!nextContinuationToken || isLoading}>
+                    Next <ChevronRight className="ml-2 h-4 w-4" />
+                </Button>
+            </div>
           </CardContent>
         </Card>
       )}
     </div>
   );
 }
+
+    
