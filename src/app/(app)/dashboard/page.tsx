@@ -97,7 +97,7 @@ export default function DashboardPage() {
     } catch (e) {
       return `${getBaseUrl()}${currentPath}`;
     }
-  }
+  };
 
   return (
     <div className="space-y-8">
