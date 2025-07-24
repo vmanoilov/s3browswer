@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview A Genkit flow that acts as a proxy to browse an S3 bucket.
@@ -36,7 +37,14 @@ const browseS3ProxyFlow = ai.defineFlow(
   },
   async ({ bucketUrl }) => {
     try {
-      const response = await fetch(bucketUrl);
+      const url = new URL(bucketUrl);
+      const prefix = url.pathname.substring(1); // S3 path without leading '/'
+
+      // For directory listing, S3 expects a URL parameter `delimiter=/`
+      // and optionally a `prefix`
+      const listUrl = `${url.origin}/?delimiter=/&prefix=${encodeURIComponent(prefix)}`;
+
+      const response = await fetch(listUrl);
 
       if (!response.ok) {
         return { files: [], folders: [], error: `Failed to fetch bucket content: ${response.statusText}` };
@@ -44,19 +52,19 @@ const browseS3ProxyFlow = ai.defineFlow(
 
       const xmlText = await response.text();
       
-      // Basic XML parsing. A robust solution would use a dedicated library.
-      const files = Array.from(xmlText.matchAll(/<Key>(.*?)<\/Key>/g)).map(m => m[1]);
-      const folders = new Set<string>();
-      
-      files.forEach(file => {
-        if (file.includes('/')) {
-          folders.add(file.split('/')[0] + '/');
-        }
-      });
+      const files = Array.from(xmlText.matchAll(/<Key>(.*?)<\/Key>/g))
+        .map(m => m[1])
+        .filter(key => key !== prefix) // Exclude the directory itself
+        .map(key => key.substring(prefix.length)); // Get relative path
+
+      const folders = Array.from(xmlText.matchAll(/<Prefix>(.*?)<\/Prefix>/g))
+        .map(m => m[1])
+        .filter(p => p !== prefix) // Exclude self
+        .map(p => p.substring(prefix.length)); // Get relative path
 
       return {
         files: files.filter(f => !f.endsWith('/')), // filter out "directory" objects
-        folders: Array.from(folders),
+        folders: Array.from(new Set(folders)), // Make unique
       };
 
     } catch (error: any) {
