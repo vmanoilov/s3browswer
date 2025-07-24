@@ -22,7 +22,7 @@ const updateScanStore = (scanId: string, update: z.infer<typeof ScanUpdateSchema
   const current = scanStore.get(scanId);
   if (current) {
     if (update.type === 'log') {
-      current.log.push(`[LOG] ${update.message}`);
+      current.log.push(`${update.message}`);
     } else if (update.type === 'result') {
       current.log.push(`[FOUND] ${update.bucket.provider}: ${update.bucket.name} - Status: ${update.bucket.status}`);
       current.results.push(update.bucket);
