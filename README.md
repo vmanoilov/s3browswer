@@ -1,8 +1,6 @@
-# S3Droid Scanner - AI-Powered S3 Bucket Browser
+# S3 Browser (s3browswer) - AI-Powered S3 Bucket Browser
 
-S3Droid Scanner is a web-based tool built with Next.js and Genkit that provides a powerful and intuitive interface for browsing, searching, and analyzing publicly accessible S3 buckets. It leverages Google's Generative AI to offer deep insights into potential security misconfigurations.
-
-![S3Droid Screenshot](https://placehold.co/800x500.png?text=S3Droid+UI+Screenshot)
+S3 Browser is a web-based tool built with Next.js and Genkit that provides a powerful and intuitive interface for browsing, searching, and analyzing publicly accessible S3 buckets. It leverages Google's Generative AI to offer deep insights into potential security misconfigurations.
 
 ## Features
 
@@ -41,8 +39,8 @@ Follow these instructions to get a copy of the project up and running on your lo
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/s3droid-scanner.git
-    cd s3droid-scanner
+    git clone https://github.com/vmanoilov/s3browswer.git
+    cd s3browswer
     ```
 
 2.  **Install dependencies:**
