@@ -55,7 +55,7 @@ export default function DashboardPage() {
     setNextContinuationToken(undefined);
   }
 
-  const handleBrowse = useCallback(async (path: string, token?: string) => {
+  const handleBrowse = useCallback(async (path: string, token?: string, page = 1) => {
     if (!bucketUrl) {
       setError('Please enter a valid S3 bucket URL.');
       return;
@@ -64,7 +64,7 @@ export default function DashboardPage() {
     setIsLoading(true);
     setContents(null);
     setError(null);
-    if (!token) { // only reset filters/sort on new directory browse, not on pagination
+    if (page === 1 && !token) { // only reset filters/sort on new directory browse, not on pagination
         setLocalFilter('');
         setExtensionFilter('');
         setCustomExtension('');
@@ -86,11 +86,17 @@ export default function DashboardPage() {
 
       setNextContinuationToken(result.nextContinuationToken);
 
-      // If we got a next token and it's not already in our list, add it.
-      if (result.nextContinuationToken && !continuationTokens.includes(result.nextContinuationToken)) {
-         setContinuationTokens(prev => [...prev, result.nextContinuationToken]);
+      // Store the token for the *next* page
+      if (result.nextContinuationToken) {
+          setContinuationTokens(prev => {
+              const newTokens = [...prev];
+              newTokens[page] = result.nextContinuationToken; // page is 1-indexed, array is 0-indexed
+              return newTokens;
+          });
       }
+      
       setCurrentPath(path);
+      setCurrentPage(page);
 
     } catch (err: any) {
       setError(err.message || 'An unexpected error occurred.');
@@ -103,19 +109,19 @@ export default function DashboardPage() {
   const handleFolderClick = (folder: string) => {
     const newPath = `${currentPath}${folder}`;
     resetPagination();
-    handleBrowse(newPath);
+    handleBrowse(newPath, undefined, 1);
   };
   
   const handleBackClick = () => {
     if (!currentPath) return;
     const newPath = currentPath.slice(0, currentPath.lastIndexOf('/', currentPath.length - 2) + 1);
     resetPagination();
-    handleBrowse(newPath);
+    handleBrowse(newPath, undefined, 1);
   };
 
   const handleUrlSubmit = () => {
       resetPagination();
-      handleBrowse('');
+      handleBrowse('', undefined, 1);
   };
 
   const handleGlobalSearch = (e: React.FormEvent) => {
@@ -128,22 +134,21 @@ export default function DashboardPage() {
 
   const handleNextPage = () => {
     if (nextContinuationToken) {
-        setCurrentPage(prev => prev + 1);
-        handleBrowse(currentPath, nextContinuationToken);
+        const nextPage = currentPage + 1;
+        handleBrowse(currentPath, nextContinuationToken, nextPage);
     }
   };
 
   const handlePrevPage = () => {
     if (currentPage > 1) {
-      const newPage = currentPage - 1;
-      setCurrentPage(newPage);
-      const prevToken = continuationTokens[newPage - 1]; // Array is 0-indexed
-      handleBrowse(currentPath, prevToken);
+      const prevPage = currentPage - 1;
+      const prevToken = continuationTokens[prevPage - 1]; // Array is 0-indexed, so page 2's token is at index 1
+      handleBrowse(currentPath, prevToken, prevPage);
     }
   };
 
   useEffect(() => {
-    handleBrowse('');
+    handleBrowse('', undefined, 1);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
