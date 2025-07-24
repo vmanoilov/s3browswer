@@ -1,5 +1,5 @@
 
-import { S3Client, GetBucketAclCommand, GetPublicAccessBlockCommand, HeadBucketCommand } from '@aws-sdk/client-s3';
+import { S3Client, HeadBucketCommand, GetBucketAclCommand, GetPublicAccessBlockCommand } from '@aws-sdk/client-s3';
 import type { ScanUpdate } from '@/ai/flows/schemas';
 import type { Stream } from 'genkit/stream';
 
@@ -119,9 +119,6 @@ const scanBucket = async (s3Client: S3Client, bucketName: string, source: 'Disco
 
 // Main function to discover open buckets in an AWS environment.
 export const discoverAwsBuckets = async (keywords: string[] = [], stream: Stream<ScanUpdate>): Promise<void> => {
-    // Note on Credentials: This service uses the AWS SDK, which will automatically
-    // use credentials from environment variables (AWS_ACCESS_KEY_ID, etc.),
-    // an IAM role if running on EC2/ECS, or the ~/.aws/credentials file.
     // Initializing the client here ensures it's fresh for every scan.
     const s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
     const scannedNames = new Set<string>();
