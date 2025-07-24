@@ -42,70 +42,88 @@ const browseS3ProxyFlow = ai.defineFlow(
   },
   async ({ bucketUrl }) => {
     try {
-      const url = new URL(bucketUrl);
-      // The prefix for S3 is the path without the leading slash.
-      // It needs to be decoded first (e.g., 'Client%20docs/' -> 'Client docs/')
-      // and then re-encoded for the fetch URL.
-      const path = decodeURIComponent(url.pathname.substring(1));
+        const url = new URL(bucketUrl);
+        const path = decodeURIComponent(url.pathname.substring(1));
+        const origin = url.origin;
 
-      // For directory listing, S3 expects URL parameters `delimiter=/` and `prefix`.
-      const listUrl = `${url.origin}/?delimiter=/&prefix=${encodeURIComponent(path)}`;
+        let allFiles: { key: string; lastModified: string }[] = [];
+        let allFolders: string[] = [];
+        let isTruncated = true;
+        let continuationToken: string | null = null;
 
-      const response = await fetch(listUrl);
+        while (isTruncated) {
+            let listUrl = `${origin}/?delimiter=/&prefix=${encodeURIComponent(path)}&list-type=2`;
+            if (continuationToken) {
+                listUrl += `&continuation-token=${encodeURIComponent(continuationToken)}`;
+            }
 
-      if (!response.ok) {
-        return { files: [], folders: [], error: `Failed to fetch bucket content: ${response.statusText}` };
-      }
+            const response = await fetch(listUrl);
 
-      const xmlText = await response.text();
+            if (!response.ok) {
+                if (allFiles.length > 0 || allFolders.length > 0) break; // If we already have some items, return them
+                return { files: [], folders: [], error: `Failed to fetch bucket content: ${response.statusText}` };
+            }
 
-      // This is a simplified XML parser that is NOT robust for all XML, but works for S3's ListBucketResult format.
-      // A production app should use a proper XML parsing library.
+            const xmlText = await response.text();
+            
+            // This is a simplified XML parser that is NOT robust for all XML, but works for S3's ListBucketResult format.
+            // A production app should use a proper XML parsing library.
 
-      const fileContents = Array.from(xmlText.matchAll(/<Contents>(.*?)<\/Contents>/gs)).map(match => {
-          const content = match[1];
-          const keyMatch = content.match(/<Key>(.*?)<\/Key>/);
-          const lastModifiedMatch = content.match(/<LastModified>(.*?)<\/LastModified>/);
+            const pageFiles = Array.from(xmlText.matchAll(/<Contents>(.*?)<\/Contents>/gs)).map(match => {
+                const content = match[1];
+                const keyMatch = content.match(/<Key>(.*?)<\/Key>/);
+                const lastModifiedMatch = content.match(/<LastModified>(.*?)<\/LastModified>/);
 
-          const fullKey = keyMatch ? keyMatch[1] : '';
-          
-          // Exclude the key if it represents the directory itself
-          if (fullKey === path) return null;
+                const fullKey = keyMatch ? keyMatch[1] : '';
+                
+                if (fullKey === path) return null; // Exclude the key if it represents the directory itself
+                
+                const relativeKey = fullKey.substring(path.length);
+                if (relativeKey.includes('/')) return null; // We only want direct children
 
-          // Make the key relative to the current path
-          const relativeKey = fullKey.substring(path.length);
+                return {
+                    key: relativeKey,
+                    lastModified: lastModifiedMatch ? lastModifiedMatch[1] : new Date().toISOString()
+                };
+            }).filter((item): item is { key: string; lastModified: string } => item !== null && item.key !== '');
 
-          // We only want direct children, not children of sub-folders
-          if (relativeKey.includes('/')) return null;
+            allFiles.push(...pageFiles);
 
-          return {
-              key: relativeKey,
-              lastModified: lastModifiedMatch ? lastModifiedMatch[1] : new Date().toISOString()
-          };
-      }).filter(Boolean); // Filter out nulls and empty strings
+            const pageFolders = Array.from(xmlText.matchAll(/<CommonPrefixes>(.*?)<\/CommonPrefixes>/gs)).map(match => {
+                const content = match[1];
+                const prefixMatch = content.match(/<Prefix>(.*?)<\/Prefix>/);
+                const fullPrefix = prefixMatch ? prefixMatch[1] : '';
 
+                if (fullPrefix === path) return null; // Exclude self reference
+                
+                const relativePath = fullPrefix.substring(path.length);
+                if (relativePath.slice(0, -1).includes('/')) return null; // We only want direct children
 
-      const folders = Array.from(xmlText.matchAll(/<Prefix>(.*?)<\/Prefix>/g))
-        .map(m => m[1])
-        .map(p => {
-          if (p === path) return null; // Exclude self reference
-          const relativePath = p.substring(path.length);
-          // We only want direct children, so there should be no slashes in the middle
-          if (relativePath.slice(0, -1).includes('/')) return null;
-          return relativePath;
-        })
-        .filter(Boolean); // filter out nulls
+                return relativePath;
+            }).filter((item): item is string => item !== null);
+            
+            allFolders.push(...pageFolders);
 
-      return {
-        // @ts-ignore - filter(Boolean) above ensures they are not null
-        files: fileContents.filter(f => f.key),
-        // @ts-ignore
-        folders: Array.from(new Set(folders)), // Make unique
-      };
+            const isTruncatedMatch = xmlText.match(/<IsTruncated>(true|false)<\/IsTruncated>/);
+            isTruncated = isTruncatedMatch ? isTruncatedMatch[1] === 'true' : false;
+
+            if (isTruncated) {
+                const tokenMatch = xmlText.match(/<NextContinuationToken>(.*?)<\/NextContinuationToken>/);
+                continuationToken = tokenMatch ? tokenMatch[1] : null;
+                if (!continuationToken) {
+                    isTruncated = false; // Stop if there's no token
+                }
+            }
+        }
+        
+        return {
+            files: allFiles,
+            folders: Array.from(new Set(allFolders)), // Make unique
+        };
 
     } catch (error: any) {
-      console.error(`Error in browseS3ProxyFlow: ${error.message}`);
-      return { files: [], folders: [], error: 'An unexpected error occurred while browsing the S3 bucket.' };
+        console.error(`Error in browseS3ProxyFlow: ${error.message}`);
+        return { files: [], folders: [], error: 'An unexpected error occurred while browsing the S3 bucket.' };
     }
   }
 );
