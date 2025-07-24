@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Folder, File, Loader2, ServerCrash, ArrowLeft } from 'lucide-react';
+import { Folder, File, Loader2, ServerCrash, ArrowLeft, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { browseS3Proxy } from '@/ai/flows/browse-s3-proxy';
@@ -20,6 +20,7 @@ export default function DashboardPage() {
   const [currentPath, setCurrentPath] = useState('');
   const [contents, setContents] = useState<BucketContents | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const handleBrowse = async (path = '') => {
     if (!bucketUrl) {
@@ -29,6 +30,7 @@ export default function DashboardPage() {
     setIsLoading(true);
     setError(null);
     setContents(null);
+    setSearchTerm(''); // Reset search on new path
     try {
       // Ensure the base URL ends with a slash
       const formattedUrl = bucketUrl.endsWith('/') ? bucketUrl : `${bucketUrl}/`;
@@ -73,6 +75,11 @@ export default function DashboardPage() {
   const getBaseUrl = () => {
       return bucketUrl.endsWith('/') ? bucketUrl : `${bucketUrl}/`;
   };
+  
+  const filteredContents = contents ? {
+      folders: contents.folders.filter(f => f.toLowerCase().includes(searchTerm.toLowerCase())),
+      files: contents.files.filter(f => f.toLowerCase().includes(searchTerm.toLowerCase())),
+  } : null;
 
   return (
     <div className="space-y-8">
@@ -138,42 +145,55 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-semibold mb-2 flex items-center"><Folder className="mr-2 h-5 w-5" /> Folders</h3>
-                <ul className="list-disc pl-5 space-y-1">
-                  {contents.folders.map((folder, index) => (
-                    <li key={`folder-${index}`} className="font-mono">
-                        <button onClick={() => handleFolderClick(folder)} className="text-primary hover:underline text-left">
-                            {folder}
-                        </button>
-                    </li>
-                  ))}
-                </ul>
-                {contents.folders.length === 0 && <p className="text-muted-foreground text-sm">No folders found.</p>}
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold mb-2 flex items-center"><File className="mr-2 h-5 w-5" /> Files</h3>
-                <ul className="list-disc pl-5 space-y-1">
-                  {contents.files.map((file, index) => {
-                    const fileUrl = new URL(`${currentPath}${file}`, getBaseUrl()).href;
-                    return (
-                        <li key={`file-${index}`} className="font-mono">
-                            <a 
-                                href={fileUrl} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="text-primary hover:underline"
-                            >
-                                {file}
-                            </a>
-                        </li>
-                    );
-                  })}
-                </ul>
-                 {contents.files.length === 0 && <p className="text-muted-foreground text-sm">No files found.</p>}
-              </div>
+            <div className="relative mb-4">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                    type="search"
+                    placeholder="Search current directory..."
+                    className="pl-8 sm:w-[300px]"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                />
             </div>
+
+            {filteredContents && (
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold mb-2 flex items-center"><Folder className="mr-2 h-5 w-5" /> Folders ({filteredContents.folders.length})</h3>
+                  <ul className="list-disc pl-5 space-y-1">
+                    {filteredContents.folders.map((folder, index) => (
+                      <li key={`folder-${index}`} className="font-mono">
+                          <button onClick={() => handleFolderClick(folder)} className="text-primary hover:underline text-left">
+                              {folder}
+                          </button>
+                      </li>
+                    ))}
+                  </ul>
+                  {filteredContents.folders.length === 0 && <p className="text-muted-foreground text-sm">No matching folders found.</p>}
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold mb-2 flex items-center"><File className="mr-2 h-5 w-5" /> Files ({filteredContents.files.length})</h3>
+                  <ul className="list-disc pl-5 space-y-1">
+                    {filteredContents.files.map((file, index) => {
+                      const fileUrl = new URL(`${currentPath}${file}`, getBaseUrl()).href;
+                      return (
+                          <li key={`file-${index}`} className="font-mono">
+                              <a 
+                                  href={fileUrl} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-primary hover:underline"
+                              >
+                                  {file}
+                              </a>
+                          </li>
+                      );
+                    })}
+                  </ul>
+                   {filteredContents.files.length === 0 && <p className="text-muted-foreground text-sm">No matching files found.</p>}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
