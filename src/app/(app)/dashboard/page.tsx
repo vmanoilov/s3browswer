@@ -66,7 +66,7 @@ export default function DashboardPage() {
         keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
       });
 
-      for await (const update of stream()) {
+      for await (const update of stream) {
         if (update.type === 'log') {
           setScanLog(prev => [...prev, `[LOG] ${update.message}`]);
         } else if (update.type === 'result') {
@@ -75,7 +75,7 @@ export default function DashboardPage() {
         }
       }
       
-      await response();
+      await response;
 
     } catch (error) {
       console.error("Failed to scan for open buckets:", error);
